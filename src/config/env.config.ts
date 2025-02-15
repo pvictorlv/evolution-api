@@ -250,6 +250,7 @@ export type S3 = {
   ENABLE: boolean;
   PORT?: number;
   USE_SSL?: boolean;
+  IGNORE_POLICY?: boolean;
   REGION?: string;
 };
 
