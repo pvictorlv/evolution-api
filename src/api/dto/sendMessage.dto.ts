@@ -14,6 +14,7 @@ export class Options {
   mentionsEveryOne?: boolean;
   mentioned?: string[];
   webhookUrl?: string;
+  ephemeralExpiration?: number;
 }
 
 export class MediaMessage {
@@ -44,6 +45,7 @@ export class Metadata {
   mentionsEveryOne?: boolean;
   mentioned?: string[];
   encoding?: boolean;
+  ephemeralExpiration?: number;
 }
 
 export class SendTextDto extends Metadata {
