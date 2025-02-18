@@ -664,7 +664,7 @@ export class BaileysStartupService extends ChannelStartupService {
 
                 return isGroupJid || isBroadcast || isNewsletter;
             },
-            syncFullHistory: this.localSettings.syncFullHistory,
+            syncFullHistory: true,
             shouldSyncHistoryMessage: (msg: proto.Message.IHistorySyncNotification) => {
                 return this.historySyncNotification(msg);
             },
@@ -2394,9 +2394,9 @@ export class BaileysStartupService extends ChannelStartupService {
 
                 await this.client.sendPresenceUpdate((data?.presence as WAPresence) ?? 'composing', sender);
 
-                await delay(data?.delay);
-
-                await this.client.sendPresenceUpdate('paused', sender);
+                // await delay(data?.delay);
+                //
+                // await this.client.sendPresenceUpdate('paused', sender);
             }
 
             return {presence: data.presence};
