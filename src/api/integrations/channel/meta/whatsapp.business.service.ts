@@ -30,6 +30,7 @@ import EventEmitter2 from 'eventemitter2';
 import FormData from 'form-data';
 import { createReadStream } from 'fs';
 import mimeTypes from 'mime-types';
+import {extension} from "mime-types";
 import { join } from 'path';
 
 export class BusinessStartupService extends ChannelStartupService {
@@ -344,7 +345,7 @@ export class BusinessStartupService extends ChannelStartupService {
               const mimetype = result.data?.mime_type || result.headers['content-type'];
 
               const contentDisposition = result.headers['content-disposition'];
-              let fileName = `${message.messages[0].id}.${mimetype.split('/')[1]}`;
+              let fileName = `${message.messages[0].id}.${extension(mimetype)}`;
               if (contentDisposition) {
                 const match = contentDisposition.match(/filename="(.+?)"/);
                 if (match) {
