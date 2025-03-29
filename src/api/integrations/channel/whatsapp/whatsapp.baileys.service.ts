@@ -107,7 +107,7 @@ import makeWASocket, {
     isJidGroup,
     isJidNewsletter,
     isJidUser,
-    makeCacheableSignalKeyStore,
+    makeCacheableSignalKeyStore, makeEnhancedLibSignalRepository,
     MessageUpsertType,
     MessageUserReceiptUpdate,
     MiscMessageGenerationOptions,
@@ -145,6 +145,7 @@ import {PassThrough, Readable} from 'stream';
 import {v4} from 'uuid';
 
 import {useVoiceCallsBaileys} from './voiceCalls/useVoiceCallsBaileys';
+import {createEnhancedSignalKeyStore} from 'baileys/lib/Utils/enhanced-signal-store';
 
 const groupMetadataCache = new CacheService(new CacheEngine(configService, 'groups').getEngine());
 
@@ -637,58 +638,82 @@ export class BaileysStartupService extends ChannelStartupService {
         }
 
         const socketConfig: UserFacingSocketConfig = {
-            ...options,
-            version,
-            logger: P({level: this.logBaileys}),
-            printQRInTerminal: false,
-            auth: {
-                creds: this.instance.authState.state.creds,
-                keys: makeCacheableSignalKeyStore(this.instance.authState.state.keys, P({level: 'error'}) as any),
-            },
-            msgRetryCounterCache: this.msgRetryCounterCache,
-            generateHighQualityLinkPreview: true,
-            getMessage: async (key) => (await this.getMessage(key)) as Promise<proto.IMessage>,
-            ...browserOptions,
-            markOnlineOnConnect: this.localSettings.alwaysOnline,
-            retryRequestDelayMs: 350,
-            maxMsgRetryCount: 4,
-            fireInitQueries: true,
-            connectTimeoutMs: 30_000,
-            keepAliveIntervalMs: 30_000,
-            qrTimeout: 45_000,
-            emitOwnEvents: true,
-            shouldIgnoreJid: (jid) => {
-                const isGroupJid = this.localSettings.groupsIgnore && isJidGroup(jid);
-                const isBroadcast = !this.localSettings.readStatus && isJidBroadcast(jid);
-                const isNewsletter = isJidNewsletter(jid);
+                ...options,
+                version,
+                logger: P({level: this.logBaileys}),
+                printQRInTerminal: false,
+                auth: {
+                    creds: this.instance.authState.state.creds,
+                    keys: makeCacheableSignalKeyStore(this.instance.authState.state.keys, P({level: 'error'}) as any)
+                },
+                makeSignalRepository: makeEnhancedLibSignalRepository,
+                msgRetryCounterCache: this.msgRetryCounterCache,
+                generateHighQualityLinkPreview:
+                    true,
+                getMessage:
+                    async (key) => (await this.getMessage(key)) as Promise<proto.IMessage>,
+                ...
+                    browserOptions,
+                markOnlineOnConnect:
+                this.localSettings.alwaysOnline,
+                retryRequestDelayMs:
+                    350,
+                maxMsgRetryCount:
+                    4,
+                fireInitQueries:
+                    true,
+                connectTimeoutMs:
+                    30_000,
+                keepAliveIntervalMs:
+                    30_000,
+                qrTimeout:
+                    45_000,
+                emitOwnEvents:
+                    true,
+                shouldIgnoreJid:
+                    (jid) => {
+                        const isGroupJid = this.localSettings.groupsIgnore && isJidGroup(jid);
+                        const isBroadcast = !this.localSettings.readStatus && isJidBroadcast(jid);
+                        const isNewsletter = isJidNewsletter(jid);
 
-                return isGroupJid || isBroadcast || isNewsletter;
-            },
-            syncFullHistory: true,
-            shouldSyncHistoryMessage: (msg: proto.Message.IHistorySyncNotification) => {
-                return this.historySyncNotification(msg);
-            },
-            cachedGroupMetadata: this.getGroupMetadataCache,
-            userDevicesCache: this.userDevicesCache,
-            transactionOpts: {maxCommitRetries: 10, delayBetweenTriesMs: 3000},
-            patchMessageBeforeSending(message) {
-                if (
-                    message.deviceSentMessage?.message?.listMessage?.listType === proto.Message.ListMessage.ListType.PRODUCT_LIST
-                ) {
-                    message = JSON.parse(JSON.stringify(message));
+                        return isGroupJid || isBroadcast || isNewsletter;
+                    },
+                syncFullHistory:
+                    true,
+                shouldSyncHistoryMessage:
+                    (msg: proto.Message.IHistorySyncNotification) => {
+                        return this.historySyncNotification(msg);
+                    },
+                cachedGroupMetadata:
+                this.getGroupMetadataCache,
+                userDevicesCache:
+                this.userDevicesCache,
+                transactionOpts:
+                    {
+                        maxCommitRetries: 10, delayBetweenTriesMs:
+                            3000
+                    }
+                ,
+                patchMessageBeforeSending(message) {
+                    if (
+                        message.deviceSentMessage?.message?.listMessage?.listType === proto.Message.ListMessage.ListType.PRODUCT_LIST
+                    ) {
+                        message = JSON.parse(JSON.stringify(message));
 
-                    message.deviceSentMessage.message.listMessage.listType = proto.Message.ListMessage.ListType.SINGLE_SELECT;
+                        message.deviceSentMessage.message.listMessage.listType = proto.Message.ListMessage.ListType.SINGLE_SELECT;
+                    }
+
+                    if (message.listMessage?.listType == proto.Message.ListMessage.ListType.PRODUCT_LIST) {
+                        message = JSON.parse(JSON.stringify(message));
+
+                        message.listMessage.listType = proto.Message.ListMessage.ListType.SINGLE_SELECT;
+                    }
+
+                    return message;
                 }
-
-                if (message.listMessage?.listType == proto.Message.ListMessage.ListType.PRODUCT_LIST) {
-                    message = JSON.parse(JSON.stringify(message));
-
-                    message.listMessage.listType = proto.Message.ListMessage.ListType.SINGLE_SELECT;
-                }
-
-                return message;
-            },
-        };
+                ,
+            }
+        ;
 
         this.endSession = false;
 
@@ -1927,7 +1952,7 @@ export class BaileysStartupService extends ChannelStartupService {
             // const call = await this.client.offerCall(jid, isVideo);
             // setTimeout(() => this.client.terminateCall(call.id, call.to), callDuration * 1000);
 
-            return call;
+            return null;
         } catch (error) {
             return error;
         }
@@ -3000,8 +3025,10 @@ export class BaileysStartupService extends ChannelStartupService {
                 ptt: true,
                 mimetype: 'audio/ogg; codecs=opus',
             },
-            {presence: 'recording', delay: data?.delay,
-                ephemeralExpiration: data?.ephemeralExpiration},
+            {
+                presence: 'recording', delay: data?.delay,
+                ephemeralExpiration: data?.ephemeralExpiration
+            },
             isIntegration,
         );
     }
@@ -3306,7 +3333,8 @@ export class BaileysStartupService extends ChannelStartupService {
         }
 
         return await this.sendMessageWithTyping(data.number, {...message}, {
-            ephemeralExpiration: data?.ephemeralExpiration});
+            ephemeralExpiration: data?.ephemeralExpiration
+        });
     }
 
     public async reactionMessage(data: SendReactionDto) {
