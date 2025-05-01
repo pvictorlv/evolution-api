@@ -95,6 +95,15 @@ export class ChatRouter extends RouterBroker {
 
         return res.status(HttpStatus.CREATED).json(response);
       })
+      .delete(this.routerPath('deleteOldMessages'), ...guards, async (req, res) => {
+        const response = await this.dataValidate<DeleteMessage>({
+          request: req,
+          schema: deleteMessageSchema,
+          ClassRef: DeleteMessage,
+          execute: (instance, data) => chatController.deleteOldMessages(instance, data),
+        });
+        return res.status(HttpStatus.CREATED).json(response);
+      })
       .post(this.routerPath('fetchProfilePictureUrl'), ...guards, async (req, res) => {
         const response = await this.dataValidate<NumberDto>({
           request: req,

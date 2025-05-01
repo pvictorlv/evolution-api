@@ -566,6 +566,27 @@ export class ChannelStartupService {
     return cleanedMessage;
   }
 
+  public async deleteOldMessages() {
+    const messages = await this.prismaRepository.message.findMany({
+      where: {
+        instanceId: this.instanceId,
+        messageTimestamp: {
+          lte: Math.floor(new Date().getTime() / 1000) - 604800, // 7 days
+        },
+      },
+    });
+
+    if (messages.length > 0) {
+      await this.prismaRepository.message.deleteMany({
+        where: {
+          id: {
+            in: messages.map((message) => message.id),
+          },
+        },
+      });
+    }
+  }
+
   public async fetchMessages(query: Query<Message>) {
     const keyFilters = query?.where?.key as {
       id?: string;
@@ -690,22 +711,23 @@ export class ChannelStartupService {
         : Prisma.sql``;
 
     const results = await this.prismaRepository.$queryRaw`
-        WITH rankedMessages AS (
-          SELECT DISTINCT ON ("Contact"."remoteJid")
-            "Contact"."id",
-            "Contact"."remoteJid",
-            "Contact"."pushName",
-            "Contact"."profilePicUrl",
-            COALESCE(
-              to_timestamp("Message"."messageTimestamp"::double precision), 
-              "Contact"."updatedAt"
-            ) as "updatedAt",
-            "Chat"."createdAt" as "windowStart",
-            "Chat"."createdAt" + INTERVAL '24 hours' as "windowExpires",
-            CASE 
-              WHEN "Chat"."createdAt" + INTERVAL '24 hours' > NOW() THEN true 
-              ELSE false 
-            END as "windowActive",
+            WITH rankedMessages AS (SELECT DISTINCT
+            ON ("Contact"."remoteJid")
+                "Contact"."id",
+                "Contact"."remoteJid",
+                "Contact"."pushName",
+                "Contact"."profilePicUrl",
+                COALESCE (
+                to_timestamp("Message"."messageTimestamp":: double precision),
+                "Contact"."updatedAt"
+                ) as "updatedAt",
+                "Chat"."createdAt" as "windowStart",
+                "Chat"."createdAt" + INTERVAL '24 hours' as "windowExpires",
+                CASE
+                WHEN "Chat"."createdAt" + INTERVAL '24 hours' > NOW() THEN true
+                ELSE false
+            END
+            as "windowActive",
             "Message"."id" AS lastMessageId,
             "Message"."key" AS lastMessage_key,
             "Message"."pushName" AS lastMessagePushName,
@@ -723,17 +745,30 @@ export class ChannelStartupService {
           LEFT JOIN "Chat" ON "Chat"."remoteJid" = "Contact"."remoteJid" 
             AND "Chat"."instanceId" = "Contact"."instanceId"
           WHERE 
-            "Contact"."instanceId" = ${this.instanceId}
-            AND "Message"."instanceId" = ${this.instanceId}
+            "Contact"."instanceId" =
+            ${this.instanceId}
+            AND
+            "Message"
+            .
+            "instanceId"
+            =
+            ${this.instanceId}
             ${remoteJid ? Prisma.sql`AND "Contact"."remoteJid" = ${remoteJid}` : Prisma.sql``}
             ${timestampFilter}
-          ORDER BY 
-            "Contact"."remoteJid",
-            "Message"."messageTimestamp" DESC
-        )
-        SELECT * FROM rankedMessages
-        ORDER BY "updatedAt" DESC NULLS LAST;
-    `;
+            ORDER
+            BY
+            "Contact"
+            .
+            "remoteJid",
+            "Message"
+            .
+            "messageTimestamp"
+            DESC
+            )
+            SELECT *
+            FROM rankedMessages
+            ORDER BY "updatedAt" DESC NULLS LAST;
+        `;
 
     if (results && isArray(results) && results.length > 0) {
       const mappedResults = results.map((contact) => {

@@ -42,6 +42,10 @@ export class ChatController {
     return await this.waMonitor.waInstances[instanceName].deleteMessage(data);
   }
 
+  public async deleteOldMessages({ instanceName }: InstanceDto, data: DeleteMessage) {
+    return await this.waMonitor.waInstances[instanceName].deleteOldMessages(data);
+  }
+
   public async fetchProfilePicture({ instanceName }: InstanceDto, data: NumberDto) {
     return await this.waMonitor.waInstances[instanceName].profilePicture(data.number);
   }
