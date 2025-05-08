@@ -99,6 +99,7 @@ import makeWASocket, {
     DisconnectReason,
     downloadMediaMessage,
     fetchLatestBaileysVersion,
+    fetchLatestWaWebVersion,
     generateWAMessageFromContent,
     getAggregateVotesInPollMessage,
     getContentType,
@@ -590,7 +591,11 @@ export class BaileysStartupService extends ChannelStartupService {
             version = session.VERSION.split('.');
             log = `Baileys version env: ${version}`;
         } else {
-            const baileysVersion = await fetchLatestBaileysVersion();
+            const latestWAversion = await fetchLatestWaWebVersion({
+
+            });
+
+            const baileysVersion = latestWAversion?.isLatest ? latestWAversion : await fetchLatestBaileysVersion();
             version = baileysVersion.version;
             log = `Baileys version: ${version}`;
         }
