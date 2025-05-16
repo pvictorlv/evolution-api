@@ -1987,28 +1987,28 @@ export class BaileysStartupService extends ChannelStartupService {
 
     if (messageId) option.messageId = messageId;
     // else option.messageId = '3EB0' + randomBytes(18).toString('hex').toUpperCase();
-
-    if (message['viewOnceMessage']) {
-      const m = generateWAMessageFromContent(sender, message, {
-        timestamp: new Date(),
-        userJid: this.instance.wuid,
-        messageId,
-        quoted,
-      });
-      const id = await this.client.relayMessage(sender, message, { messageId });
-      m.key = {
-        id: id,
-        remoteJid: sender,
-        participant: isJidUser(sender) ? sender : undefined,
-        fromMe: true,
-      };
-      for (const [key, value] of Object.entries(m)) {
-        if (!value || (isArray(value) && value.length) === 0) {
-          delete m[key];
-        }
-      }
-      return m;
-    }
+    //
+    // if (message['viewOnceMessage']) {
+    //   const m = generateWAMessageFromContent(sender, message, {
+    //     timestamp: new Date(),
+    //     userJid: this.instance.wuid,
+    //     messageId,
+    //     quoted,
+    //   });
+    //   const id = await this.client.relayMessage(sender, message, { messageId });
+    //   m.key = {
+    //     id: id,
+    //     remoteJid: sender,
+    //     participant: isJidUser(sender) ? sender : undefined,
+    //     fromMe: true,
+    //   };
+    //   for (const [key, value] of Object.entries(m)) {
+    //     if (!value || (isArray(value) && value.length) === 0) {
+    //       delete m[key];
+    //     }
+    //   }
+    //   return m;
+    // }
 
     if (
       !message['audio'] &&
@@ -2032,6 +2032,12 @@ export class BaileysStartupService extends ChannelStartupService {
     }
 
     if (message['conversation']) {
+      console.log("SENDING CONVERSATION MESSAGE", option, {
+        text: message['conversation'],
+        mentions,
+        linkPreview: linkPreview,
+      } as unknown as AnyMessageContent);
+
       return await this.client.sendMessage(
         sender,
         {
@@ -2124,6 +2130,7 @@ export class BaileysStartupService extends ChannelStartupService {
       return firstMessage;
     }
 
+    console.log("SENDING GENERAL MESSAGE", option as unknown as AnyMessageContent);
     return await this.client.sendMessage(
       sender,
       message as unknown as AnyMessageContent,
