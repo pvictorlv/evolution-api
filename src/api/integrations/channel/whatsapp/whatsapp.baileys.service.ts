@@ -148,7 +148,6 @@ import { PassThrough, Readable } from 'stream';
 import { v4 } from 'uuid';
 
 import { useVoiceCallsBaileys } from './voiceCalls/useVoiceCallsBaileys';
-import MsgCacheService from "@api/services/msgCache.service";
 
 const groupMetadataCache = new CacheService(new CacheEngine(configService, 'groups').getEngine());
 
@@ -229,8 +228,6 @@ export class BaileysStartupService extends ChannelStartupService {
   }
 
   private authStateProvider: AuthStateProvider;
-
-  private readonly msgCacheService: MsgCacheService = new MsgCacheService();
 
   private readonly msgRetryCounterCache: CacheStore = new NodeCache({
     stdTTL: 600,
@@ -669,7 +666,7 @@ export class BaileysStartupService extends ChannelStartupService {
       makeSignalRepository: makeEnhancedLibSignalRepository,
       msgRetryCounterCache: this.msgRetryCounterCache,
       generateHighQualityLinkPreview: true,
-      getMessage: this.msgCacheService.get,
+      getMessage: async (key) => (await this.getMessage(key)) as Promise<proto.IMessage>,
       ...browserOptions,
       markOnlineOnConnect: this.localSettings.alwaysOnline,
       retryRequestDelayMs: 500,
@@ -1135,8 +1132,6 @@ export class BaileysStartupService extends ChannelStartupService {
     ) => {
       try {
         for (const received of messages) {
-          this.msgCacheService.save(received);
-
           if (received.message?.conversation || received.message?.extendedTextMessage?.text) {
             const text = received.message?.conversation || received.message?.extendedTextMessage?.text;
 
