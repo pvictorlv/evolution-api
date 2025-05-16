@@ -233,14 +233,14 @@ export class BaileysStartupService extends ChannelStartupService {
     stdTTL: 600,
     maxKeys: 1000,
     checkperiod: 300,
-    useClones: false,
+    useClones: false
   });
 
   private readonly userDevicesCache: CacheStore = new NodeCache({
     stdTTL: 60,
     maxKeys: 1000,
     checkperiod: 300,
-    useClones: false,
+    useClones: false
   });
 
   private endSession = false;
@@ -1981,7 +1981,7 @@ export class BaileysStartupService extends ChannelStartupService {
     if (ephemeralExpiration) option.ephemeralExpiration = ephemeralExpiration;
 
     if (messageId) option.messageId = messageId;
-    // else option.messageId = '3EB0' + randomBytes(18).toString('hex').toUpperCase();
+    else option.messageId = '3EB0' + randomBytes(18).toString('hex').toUpperCase();
 
     if (message['viewOnceMessage']) {
       const m = generateWAMessageFromContent(sender, message, {
