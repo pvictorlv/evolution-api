@@ -109,7 +109,7 @@ import makeWASocket, {
     isJidGroup,
     isJidNewsletter,
     isJidUser,
-    makeCacheableSignalKeyStore, makeEnhancedLibSignalRepository,
+    makeCacheableSignalKeyStore,
     MessageUpsertType,
     MessageUserReceiptUpdate,
     MiscMessageGenerationOptions,
@@ -147,7 +147,6 @@ import {PassThrough, Readable} from 'stream';
 import {v4} from 'uuid';
 
 import {useVoiceCallsBaileys} from './voiceCalls/useVoiceCallsBaileys';
-import {createEnhancedSignalKeyStore} from 'baileys/lib/Utils/enhanced-signal-store';
 
 const groupMetadataCache = new CacheService(new CacheEngine(configService, 'groups').getEngine());
 
@@ -652,7 +651,6 @@ export class BaileysStartupService extends ChannelStartupService {
                     creds: this.instance.authState.state.creds,
                     keys: makeCacheableSignalKeyStore(this.instance.authState.state.keys, P({level: 'error'}) as any)
                 },
-                makeSignalRepository: makeEnhancedLibSignalRepository,
                 msgRetryCounterCache: this.msgRetryCounterCache,
                 generateHighQualityLinkPreview:
                     true,
