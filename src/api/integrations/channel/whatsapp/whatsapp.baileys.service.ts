@@ -959,7 +959,7 @@ export class BaileysStartupService extends ChannelStartupService {
     }: {
       chats: Chat[];
       contacts: Contact[];
-      messages: WAMessage[];
+      messages: any[];
       isLatest?: boolean;
       progress?: number;
       syncType?: proto.HistorySync.HistorySyncType;
@@ -1113,7 +1113,7 @@ export class BaileysStartupService extends ChannelStartupService {
         type,
         requestId,
       }: {
-        messages: WAMessage[];
+        messages: any[];
         type: MessageUpsertType;
         requestId?: string;
       },
@@ -3457,7 +3457,7 @@ export class BaileysStartupService extends ChannelStartupService {
       console.log('verify', verify);
       normalVerifiedUsers = await Promise.all(
         normalUsers.map(async (user) => {
-          let numberVerified: (typeof verify)[0] | null = null;
+          let numberVerified: any = null;
 
           const cached = cachedNumbers.find((cached) => cached.jidOptions.includes(user.jid.replace('+', '')));
           if (cached) {
