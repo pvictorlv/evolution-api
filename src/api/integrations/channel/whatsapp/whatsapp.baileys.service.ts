@@ -119,7 +119,7 @@ import makeWASocket, {
   UserFacingSocketConfig,
   WABrowserDescription,
   WAMediaUpload,
-  WAMessage,
+  WAMessage, WAMessageKey,
   WAMessageUpdate,
   WAPresence,
   WASocket,
@@ -959,7 +959,7 @@ export class BaileysStartupService extends ChannelStartupService {
     }: {
       chats: Chat[];
       contacts: Contact[];
-      messages: proto.IWebMessageInfo[];
+      messages: WAMessage[];
       isLatest?: boolean;
       progress?: number;
       syncType?: proto.HistorySync.HistorySyncType;
@@ -1113,7 +1113,7 @@ export class BaileysStartupService extends ChannelStartupService {
         type,
         requestId,
       }: {
-        messages: proto.IWebMessageInfo[];
+        messages: WAMessage[];
         type: MessageUpsertType;
         requestId?: string;
       },
@@ -1455,7 +1455,7 @@ export class BaileysStartupService extends ChannelStartupService {
       }
     },
 
-    'messages.update': async (args: WAMessageUpdate[], settings: any) => {
+    'messages.update': async (args: { update: Partial<WAMessage>; key: WAMessageKey }[], settings: any) => {
       this.logger.log(`Update messages ${JSON.stringify(args, undefined, 2)}`);
 
       const readChatToUpdate: Record<string, true> = {}; // {remoteJid: true}
