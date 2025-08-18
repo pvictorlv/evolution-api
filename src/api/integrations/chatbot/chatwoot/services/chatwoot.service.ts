@@ -26,7 +26,6 @@ import axios from 'axios';
 import { proto } from 'baileys';
 import dayjs from 'dayjs';
 import FormData from 'form-data';
-import Jimp from 'jimp';
 import Long from 'long';
 import mimeTypes from 'mime-types';
 import path from 'path';
@@ -2054,58 +2053,58 @@ export class ChatwootService {
         }
 
         const isAdsMessage = (adsMessage && adsMessage.title) || adsMessage.body || adsMessage.thumbnailUrl;
-        if (isAdsMessage) {
-          const imgBuffer = await axios.get(adsMessage.thumbnailUrl, { responseType: 'arraybuffer' });
-
-          const extension = mimeTypes.extension(imgBuffer.headers['content-type']);
-          const mimeType = extension && mimeTypes.lookup(extension);
-
-          if (!mimeType) {
-            this.logger.warn('mimetype of Ads message not found');
-            return;
-          }
-
-          const random = Math.random().toString(36).substring(7);
-          const nameFile = `${random}.${mimeTypes.extension(mimeType)}`;
-          const fileData = Buffer.from(imgBuffer.data, 'binary');
-
-          const img = await Jimp.read(fileData);
-          await img.cover(320, 180);
-
-          const processedBuffer = await img.getBufferAsync(Jimp.MIME_PNG);
-
-          const fileStream = new Readable();
-          fileStream._read = () => {}; // _read is required but you can noop it
-          fileStream.push(processedBuffer);
-          fileStream.push(null);
-
-          const truncStr = (str: string, len: number) => {
-            if (!str) return '';
-
-            return str.length > len ? str.substring(0, len) + '...' : str;
-          };
-
-          const title = truncStr(adsMessage.title, 40);
-          const description = truncStr(adsMessage?.body, 75);
-
-          const send = await this.sendData(
-            getConversation,
-            fileStream,
-            nameFile,
-            messageType,
-            `${bodyMessage}\n\n\n**${title}**\n${description}\n${adsMessage.sourceUrl}`,
-            instance,
-            body,
-            'WAID:' + body.key.id,
-          );
-
-          if (!send) {
-            this.logger.warn('message not sent');
-            return;
-          }
-
-          return send;
-        }
+        // if (isAdsMessage) {
+        //   const imgBuffer = await axios.get(adsMessage.thumbnailUrl, { responseType: 'arraybuffer' });
+        //
+        //   const extension = mimeTypes.extension(imgBuffer.headers['content-type']);
+        //   const mimeType = extension && mimeTypes.lookup(extension);
+        //
+        //   if (!mimeType) {
+        //     this.logger.warn('mimetype of Ads message not found');
+        //     return;
+        //   }
+        //
+        //   const random = Math.random().toString(36).substring(7);
+        //   const nameFile = `${random}.${mimeTypes.extension(mimeType)}`;
+        //   const fileData = Buffer.from(imgBuffer.data, 'binary');
+        //
+        //   const img = await Jimp.read(fileData);
+        //   await img.cover(320, 180);
+        //
+        //   const processedBuffer = await img.getBufferAsync(Jimp.MIME_PNG);
+        //
+        //   const fileStream = new Readable();
+        //   fileStream._read = () => {}; // _read is required but you can noop it
+        //   fileStream.push(processedBuffer);
+        //   fileStream.push(null);
+        //
+        //   const truncStr = (str: string, len: number) => {
+        //     if (!str) return '';
+        //
+        //     return str.length > len ? str.substring(0, len) + '...' : str;
+        //   };
+        //
+        //   const title = truncStr(adsMessage.title, 40);
+        //   const description = truncStr(adsMessage?.body, 75);
+        //
+        //   const send = await this.sendData(
+        //     getConversation,
+        //     fileStream,
+        //     nameFile,
+        //     messageType,
+        //     `${bodyMessage}\n\n\n**${title}**\n${description}\n${adsMessage.sourceUrl}`,
+        //     instance,
+        //     body,
+        //     'WAID:' + body.key.id,
+        //   );
+        //
+        //   if (!send) {
+        //     this.logger.warn('message not sent');
+        //     return;
+        //   }
+        //
+        //   return send;
+        // }
 
         if (body.key.remoteJid.includes('@g.us')) {
           const participantName = body.pushName;
