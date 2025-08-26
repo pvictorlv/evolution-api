@@ -655,7 +655,7 @@ export class BaileysStartupService extends ChannelStartupService {
       ...browserOptions,
       markOnlineOnConnect: this.localSettings.alwaysOnline,
       retryRequestDelayMs: 350,
-      maxMsgRetryCount: 4,
+      maxMsgRetryCount: 5,
       fireInitQueries: true,
       connectTimeoutMs: 30_000,
       keepAliveIntervalMs: 30_000,
@@ -1167,9 +1167,8 @@ export class BaileysStartupService extends ChannelStartupService {
             continue;
           }
 
-          await this.baileysCache.set(messageKey, true, 5 * 60);
 
-          if (received.messageStubParameters && received.messageStubParameters[0] === 'Message absent from node') {
+          if (received.messageStubParameters && (received.messageStubParameters[0] === 'Message absent from node' || received.messageStubParameters[0] === 'Invalid PreKey ID')) {
             this.logger.info(`Recovering message lost messageId: ${received.key.id}`);
 
             await this.baileysCache.set(received.key.id, {
@@ -1188,13 +1187,17 @@ export class BaileysStartupService extends ChannelStartupService {
           }
 
           if (
-            (type !== 'notify' && type !== 'append') ||
             received.message?.protocolMessage ||
             received.message?.pollUpdateMessage ||
             !received?.message
           ) {
+            console.log('protocolMessage or pollUpdateMessage or empty message, ignored', received.message);
+            console.log('message', received?.message);
+            console.log('received', received);
             continue;
           }
+
+          await this.baileysCache.set(messageKey, true, 5 * 60);
 
           if (Long.isLong(received.messageTimestamp)) {
             received.messageTimestamp = received.messageTimestamp?.toNumber();
