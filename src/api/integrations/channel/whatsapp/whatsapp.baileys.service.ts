@@ -108,7 +108,8 @@ import makeWASocket, {
   isJidBroadcast,
   isJidGroup,
   isJidNewsletter,
-  isJidUser,
+  isLidUser,
+  isPnUser,
   makeCacheableSignalKeyStore,
   MessageUpsertType,
   MessageUserReceiptUpdate,
@@ -119,13 +120,12 @@ import makeWASocket, {
   UserFacingSocketConfig,
   WABrowserDescription,
   WAMediaUpload,
-  WAMessage, WAMessageKey,
+  WAMessage,
+  WAMessageKey,
   WAMessageUpdate,
   WAPresence,
   WASocket,
 } from 'baileys';
-import { Label } from 'baileys/lib/Types/Label';
-import { LabelAssociation } from 'baileys/lib/Types/LabelAssociation';
 import { spawn } from 'child_process';
 import { isArray, isBase64, isURL } from 'class-validator';
 import { randomBytes } from 'crypto';
@@ -147,6 +147,8 @@ import { PassThrough, Readable } from 'stream';
 import { v4 } from 'uuid';
 
 import { useVoiceCallsBaileys } from './voiceCalls/useVoiceCallsBaileys';
+import { Label } from 'baileys/lib/Types/Label';
+import { LabelAssociation } from 'baileys/lib/Types/LabelAssociation';
 
 const groupMetadataCache = new CacheService(new CacheEngine(configService, 'groups').getEngine());
 
@@ -647,7 +649,7 @@ export class BaileysStartupService extends ChannelStartupService {
       printQRInTerminal: false,
       auth: {
         creds: this.instance.authState.state.creds,
-        keys: makeCacheableSignalKeyStore(this.instance.authState.state.keys, P({ level: 'error' }) as any),
+        keys: makeCacheableSignalKeyStore(this.instance.authState.state.keys, P({ level: 'trace' }) as any),
       },
       msgRetryCounterCache: this.msgRetryCounterCache,
       generateHighQualityLinkPreview: true,
@@ -1048,8 +1050,8 @@ export class BaileysStartupService extends ChannelStartupService {
             continue;
           }
 
-          if (m.key.remoteJid?.includes('@lid') && m.key.senderPn) {
-            m.key.remoteJid = m.key.senderPn;
+          if (m.key.remoteJid?.includes('@lid') && m.key.remoteJidAlt) {
+            m.key.remoteJid = m.key.remoteJidAlt;
           }
 
           if (Long.isLong(m?.messageTimestamp)) {
@@ -1121,13 +1123,13 @@ export class BaileysStartupService extends ChannelStartupService {
     ) => {
       try {
         for (const received of messages) {
-          if (received.key.remoteJid?.includes('@lid') && received.key.senderPn) {
+          if (received.key.remoteJid?.includes('@lid') && received.key.remoteJidAlt) {
             (
               received.key as {
                 previousRemoteJid?: string | null;
               }
             ).previousRemoteJid = received.key.remoteJid;
-            received.key.remoteJid = received.key.senderPn;
+            received.key.remoteJid = received.key.remoteJidAlt;
           }
           if (received.message?.conversation || received.message?.extendedTextMessage?.text) {
             const text = received.message?.conversation || received.message?.extendedTextMessage?.text;
@@ -1468,9 +1470,10 @@ export class BaileysStartupService extends ChannelStartupService {
           continue;
         }
 
-        if (key.remoteJid?.includes('@lid') && key.senderPn) {
-          key.remoteJid = key.senderPn;
+        if (key.remoteJid?.includes('@lid') && key.remoteJidAlt) {
+          key.remoteJid = key.remoteJidAlt;
         }
+
 
         const updateKey = `${this.instance.id}_${key.id}_${update.status}`;
 
@@ -1529,7 +1532,7 @@ export class BaileysStartupService extends ChannelStartupService {
               keyId: key.id,
               remoteJid: key.remoteJid,
               fromMe: key.fromMe,
-              participant: key?.remoteJid,
+              participant: key?.participantAlt || key?.participant,
               status: 'DELETED',
               instanceId: this.instanceId,
             };
@@ -2031,7 +2034,7 @@ export class BaileysStartupService extends ChannelStartupService {
       m.key = {
         id: id,
         remoteJid: sender,
-        participant: isJidUser(sender) ? sender : undefined,
+        participant: isPnUser(sender) || isLidUser(sender) ? sender : undefined,
         fromMe: true,
       };
       for (const [key, value] of Object.entries(m)) {
@@ -3564,7 +3567,7 @@ export class BaileysStartupService extends ChannelStartupService {
     try {
       const keys: proto.IMessageKey[] = [];
       data.readMessages.forEach((read) => {
-        if (isJidGroup(read.remoteJid) || isJidUser(read.remoteJid)) {
+        if (isJidGroup(read.remoteJid) || isPnUser(read.remoteJid) || isLidUser(read.remoteJid)) {
           keys.push({
             remoteJid: read.remoteJid,
             fromMe: read.fromMe,

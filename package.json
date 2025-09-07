@@ -3,7 +3,7 @@
   "version": "2.2.3",
   "description": "Rest api for communication with WhatsApp",
   "main": "./dist/main.js",
-  "type": "commonjs",
+  "type": "module",
   "scripts": {
     "build": "tsc --noEmit && tsup",
     "start": "tsnd -r tsconfig-paths/register --files --transpile-only ./src/main.ts",
@@ -59,7 +59,7 @@
     "@sentry/node": "^8.47.0",
     "amqplib": "^0.10.5",
     "axios": "^1.7.9",
-    "baileys": "github:pvictorlv/Baileys#abf926939e5e28457d081063aa5504666f64e777",
+    "baileys": "github:pvictorlv/Baileys#d176bd9111672391992d317853c7d78cad260ca0",
     "class-validator": "^0.14.1",
     "compression": "^1.7.5",
     "cors": "^2.8.5",

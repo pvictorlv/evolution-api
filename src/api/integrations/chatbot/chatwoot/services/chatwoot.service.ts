@@ -18,7 +18,6 @@ import ChatwootClient, {
   generic_id,
   inbox,
 } from '@figuro/chatwoot-sdk';
-import { request as chatwootRequest } from '@figuro/chatwoot-sdk/dist/core/request';
 import { Chatwoot as ChatwootModel, Contact as ContactModel, Message as MessageModel } from '@prisma/client';
 import i18next from '@utils/i18n';
 import { sendTelemetry } from '@utils/sendTelemetry';
@@ -429,13 +428,7 @@ export class ChatwootService {
         q: query,
       });
     } else {
-      contact = await chatwootRequest(this.getClientCwConfig(), {
-        method: 'POST',
-        url: `/api/v1/accounts/${this.provider.accountId}/contacts/filter`,
-        body: {
-          payload: this.getFilterPayload(query),
-        },
-      });
+      contact = null
     }
 
     if (!contact && contact?.payload?.length === 0) {
@@ -452,14 +445,7 @@ export class ChatwootService {
 
   private async mergeBrazilianContacts(contacts: any[]) {
     try {
-      const contact = await chatwootRequest(this.getClientCwConfig(), {
-        method: 'POST',
-        url: `/api/v1/accounts/${this.provider.accountId}/actions/contact_merge`,
-        body: {
-          base_contact_id: contacts.find((contact) => contact.phone_number.length === 14)?.id,
-          mergee_contact_id: contacts.find((contact) => contact.phone_number.length === 13)?.id,
-        },
-      });
+      const contact = null;
 
       return contact;
     } catch {
@@ -2264,10 +2250,7 @@ export class ChatwootService {
             const url =
               `/public/api/v1/inboxes/${inbox.inbox_identifier}/contacts/${sourceId}` +
               `/conversations/${conversationId}/update_last_seen`;
-            chatwootRequest(this.getClientCwConfig(), {
-              method: 'POST',
-              url: url,
-            });
+
           }
         }
         return;
