@@ -512,15 +512,13 @@ export class BaileysStartupService extends ChannelStartupService {
 
   private async getMessage(key: proto.IMessageKey, full = false) {
     try {
-      const webMessageInfo = (await this.prismaRepository.message.findMany({
-        where: {
-          instanceId: this.instanceId,
-          key: {
-            path: ['id'],
-            equals: key.id,
-          },
-        },
-      })) as unknown as proto.IWebMessageInfo[];
+      // Use raw SQL to avoid JSON path issues
+      const webMessageInfo = (await this.prismaRepository.$queryRaw`
+        SELECT * FROM "Message" 
+        WHERE "instanceId" = ${this.instanceId} 
+        AND "key"->>'id' = ${key.id}
+      `) as proto.IWebMessageInfo[];
+
       if (full) {
         return webMessageInfo[0];
       }
@@ -1474,7 +1472,6 @@ export class BaileysStartupService extends ChannelStartupService {
           key.remoteJid = key.remoteJidAlt;
         }
 
-
         const updateKey = `${this.instance.id}_${key.id}_${update.status}`;
 
         const cached = await this.baileysCache.get(updateKey);
@@ -1489,14 +1486,14 @@ export class BaileysStartupService extends ChannelStartupService {
         if (status[update.status] === 'READ' && key.fromMe) {
           if (this.configService.get<Chatwoot>('CHATWOOT').ENABLED && this.localChatwoot?.enabled) {
             this.chatwootService.eventWhatsapp(
-              'messages.read',
-              { instanceName: this.instance.name, instanceId: this.instanceId },
-              { key: key },
+                'messages.read',
+                { instanceName: this.instance.name, instanceId: this.instanceId },
+                { key: key },
             );
           }
         }
 
-        if (key.remoteJid !== 'status@broadcast') {
+        if (key.remoteJid !== 'status@broadcast' && key.id !== undefined) {
           let pollUpdates: any;
 
           if (update.pollUpdates) {
@@ -1510,48 +1507,49 @@ export class BaileysStartupService extends ChannelStartupService {
             }
           }
 
-          const findMessage = await this.prismaRepository.message.findFirst({
-            where: {
-              instanceId: this.instanceId,
-              key: {
-                path: ['id'],
-                equals: key.id,
-              },
-            },
-          });
+          const message: any = {
+            keyId: key.id,
+            remoteJid: key?.remoteJid,
+            fromMe: key.fromMe,
+            participant: key?.remoteJid,
+            status: status[update.status] ?? 'DELETED',
+            pollUpdates,
+            instanceId: this.instanceId,
+          };
 
-          if (!findMessage) {
-            continue;
+          let findMessage: any;
+          const configDatabaseData = this.configService.get<Database>('DATABASE').SAVE_DATA;
+          if (configDatabaseData.HISTORIC || configDatabaseData.NEW_MESSAGE) {
+            // Use raw SQL to avoid JSON path issues
+            const messages = (await this.prismaRepository.$queryRaw`
+              SELECT * FROM "Message" 
+              WHERE "instanceId" = ${this.instanceId} 
+              AND "key"->>'id' = ${key.id}
+              LIMIT 1
+            `) as any[];
+            findMessage = messages[0] || null;
+
+            if (findMessage) message.messageId = findMessage.id;
           }
 
           if (update.message === null && update.status === undefined) {
             this.sendDataWebhook(Events.MESSAGES_DELETE, key);
 
-            const message: any = {
-              messageId: findMessage.id,
-              keyId: key.id,
-              remoteJid: key.remoteJid,
-              fromMe: key.fromMe,
-              participant: key?.participantAlt || key?.participant,
-              status: 'DELETED',
-              instanceId: this.instanceId,
-            };
-
             if (this.configService.get<Database>('DATABASE').SAVE_DATA.MESSAGE_UPDATE)
-              await this.prismaRepository.messageUpdate.create({
-                data: message,
-              });
+              await this.prismaRepository.messageUpdate.create({ data: message });
 
             if (this.configService.get<Chatwoot>('CHATWOOT').ENABLED && this.localChatwoot?.enabled) {
               this.chatwootService.eventWhatsapp(
-                Events.MESSAGES_DELETE,
-                { instanceName: this.instance.name, instanceId: this.instanceId },
-                { key: key },
+                  Events.MESSAGES_DELETE,
+                  { instanceName: this.instance.name, instanceId: this.instanceId },
+                  { key: key },
               );
             }
 
             continue;
-          } else if (update.status !== undefined && status[update.status] !== findMessage.status) {
+          }
+
+          if (findMessage && update.status !== undefined && status[update.status] !== findMessage.status) {
             if (!key.fromMe && key.remoteJid) {
               readChatToUpdate[key.remoteJid] = true;
 
@@ -1575,51 +1573,28 @@ export class BaileysStartupService extends ChannelStartupService {
                 });
               } else {
                 this.logger.info(
-                  `Update readed messages duplicated ignored in message.update [avoid deadlock]: ${messageKey}`,
+                    `Update readed messages duplicated ignored in message.update [avoid deadlock]: ${messageKey}`,
                 );
               }
             }
           }
 
-          const message: any = {
-            messageId: findMessage.id,
-            keyId: key.id,
-            remoteJid: key.remoteJid,
-            fromMe: key.fromMe,
-            participant: key?.remoteJid,
-            status: status[update.status],
-            pollUpdates,
-            instanceId: this.instanceId,
-          };
-
           this.sendDataWebhook(Events.MESSAGES_UPDATE, message);
 
           if (this.configService.get<Database>('DATABASE').SAVE_DATA.MESSAGE_UPDATE)
-            await this.prismaRepository.messageUpdate.create({
-              data: message,
-            });
+            await this.prismaRepository.messageUpdate.create({ data: message });
 
           const existingChat = await this.prismaRepository.chat.findFirst({
             where: { instanceId: this.instanceId, remoteJid: message.remoteJid },
           });
 
           if (existingChat) {
-            const chatToInsert = {
-              remoteJid: message.remoteJid,
-              instanceId: this.instanceId,
-              name: message.pushName || '',
-              unreadMessages: 0,
-            };
+            const chatToInsert = { remoteJid: message.remoteJid, instanceId: this.instanceId, unreadMessages: 0 };
 
             this.sendDataWebhook(Events.CHATS_UPSERT, [chatToInsert]);
             if (this.configService.get<Database>('DATABASE').SAVE_DATA.CHATS) {
               try {
-                await this.prismaRepository.chat.update({
-                  where: {
-                    id: existingChat.id,
-                  },
-                  data: chatToInsert,
-                });
+                await this.prismaRepository.chat.update({ where: { id: existingChat.id }, data: chatToInsert });
               } catch (error) {
                 console.log(`Chat insert record ignored: ${chatToInsert.remoteJid} - ${chatToInsert.instanceId}`);
               }
@@ -4435,18 +4410,63 @@ export class BaileysStartupService extends ChannelStartupService {
     throw new Error('Method not available in the Baileys service');
   }
 
+  private sanitizeMessageContent(messageContent: any): any {
+    if (!messageContent) return messageContent;
+
+    // Deep clone and sanitize to avoid modifying original
+    return JSON.parse(
+        JSON.stringify(messageContent, (key, value) => {
+          // Convert Long objects to numbers
+          if (Long.isLong(value)) {
+            return value.toNumber();
+          }
+
+          // Convert Uint8Array to regular arrays
+          if (value instanceof Uint8Array) {
+            return Array.from(value);
+          }
+
+          // Remove functions and other non-serializable objects
+          if (typeof value === 'function') {
+            return undefined;
+          }
+
+          // Handle objects with toJSON method
+          if (value && typeof value === 'object' && typeof value.toJSON === 'function') {
+            return value.toJSON();
+          }
+
+          // Handle special objects that might not serialize properly
+          if (value && typeof value === 'object') {
+            // Check if it's a plain object or has prototype issues
+            try {
+              JSON.stringify(value);
+              return value;
+            } catch (e) {
+              // If it can't be stringified, return a safe representation
+              return '[Non-serializable object]';
+            }
+          }
+
+          return value;
+        }),
+    );
+  }
+
   private prepareMessage(message: proto.IWebMessageInfo): any {
     const contentType = getContentType(message.message);
     const contentMsg = message?.message[contentType] as any;
 
     const messageRaw = {
       key: message.key,
-      pushName: message.pushName,
+      pushName: message.pushName || message?.participant,
       status: status[message.status],
-      message: { ...message.message },
-      contextInfo: contentMsg?.contextInfo,
+      message: this.sanitizeMessageContent({ ...message.message }),
+      contextInfo: this.sanitizeMessageContent(contentMsg?.contextInfo),
       messageType: contentType || 'unknown',
-      messageTimestamp: message.messageTimestamp as number,
+      messageTimestamp: Long.isLong(message.messageTimestamp)
+          ? (message.messageTimestamp as Long).toNumber()
+          : (message.messageTimestamp as number),
       instanceId: this.instanceId,
       source: getDevice(message.key.id),
     };
@@ -4499,26 +4519,24 @@ export class BaileysStartupService extends ChannelStartupService {
   private async updateMessagesReadedByTimestamp(remoteJid: string, timestamp?: number): Promise<number> {
     if (timestamp === undefined || timestamp === null) return 0;
 
-    const result = await this.prismaRepository.message.updateMany({
-      where: {
-        AND: [
-          { key: { path: ['remoteJid'], equals: remoteJid } },
-          { key: { path: ['fromMe'], equals: false } },
-          { messageTimestamp: { lte: timestamp } },
-          {
-            OR: [{ status: null }, { status: status[3] }],
-          },
-        ],
-      },
-      data: { status: status[4] },
-    });
+    // Use raw SQL to avoid JSON path issues
+    const result = await this.prismaRepository.$executeRaw`
+      UPDATE "Message" 
+      SET "status" = ${status[4]}
+      WHERE "instanceId" = ${this.instanceId}
+      AND "key"->>'remoteJid' = ${remoteJid}
+      AND ("key"->>'fromMe')::boolean = false
+      AND "messageTimestamp" <= ${timestamp}
+      AND ("status" IS NULL OR "status" = ${status[3]})
+    `;
 
     if (result) {
-      if (result.count > 0) {
+      if (result > 0) {
+
         this.updateChatUnreadMessages(remoteJid);
       }
 
-      return result.count;
+      return result;
     }
 
     return 0;
@@ -4527,15 +4545,13 @@ export class BaileysStartupService extends ChannelStartupService {
   private async updateChatUnreadMessages(remoteJid: string): Promise<number> {
     const [chat, unreadMessages] = await Promise.all([
       this.prismaRepository.chat.findFirst({ where: { remoteJid } }),
-      this.prismaRepository.message.count({
-        where: {
-          AND: [
-            { key: { path: ['remoteJid'], equals: remoteJid } },
-            { key: { path: ['fromMe'], equals: false } },
-            { status: { equals: status[3] } },
-          ],
-        },
-      }),
+      this.prismaRepository.$queryRaw`
+        SELECT COUNT(*)::int as count FROM "Message" 
+        WHERE "instanceId" = ${this.instanceId}
+        AND "key"->>'remoteJid' = ${remoteJid}
+        AND ("key"->>'fromMe')::boolean = false
+        AND "status" = ${status[3]}
+      `.then((result: any[]) => result[0]?.count || 0),
     ]);
 
     if (chat && chat.unreadMessages !== unreadMessages) {
