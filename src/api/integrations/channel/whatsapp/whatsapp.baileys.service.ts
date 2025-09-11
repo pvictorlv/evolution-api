@@ -823,6 +823,8 @@ export class BaileysStartupService extends ChannelStartupService {
 
     private readonly contactHandle = {
         'lid-mapping.update': async (mapping: { lid: string; pn: string }) => {
+            console.log('LID MAPPING:', mapping);
+
             try {
                 await saveOnWhatsappCache([
                     {
@@ -833,7 +835,7 @@ export class BaileysStartupService extends ChannelStartupService {
             } catch (error) {
                 this.logger.error(`Error saving lid mapping: ${error.message}`);
             }
-            
+
             this.sendDataWebhook(Events.LID_MAPPING_UPDATE, {
                 instanceId: this.instanceId,
                 lid: mapping.lid,
