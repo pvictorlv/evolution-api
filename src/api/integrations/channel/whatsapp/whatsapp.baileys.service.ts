@@ -1205,8 +1205,6 @@ export class BaileysStartupService extends ChannelStartupService {
                     || received.message?.senderKeyDistributionMessage
                     ) {
                         console.log('protocolMessage or pollUpdateMessage or empty message, ignored', received);
-                        console.log('message', received?.message);
-                        console.log('received', received);
                         continue;
                     }
 
@@ -1243,7 +1241,6 @@ export class BaileysStartupService extends ChannelStartupService {
 
                     const messageRaw = this.prepareMessage(received);
 
-                    console.log('message raw', messageRaw);
 
                     const isMedia =
                         received?.message?.imageMessage ||
@@ -1254,7 +1251,6 @@ export class BaileysStartupService extends ChannelStartupService {
                         received?.message?.ptvMessage ||
                         received?.message?.audioMessage;
 
-                    console.log('is media', isMedia);
 
                     if (this.localSettings.readMessages && received.key.id !== 'status@broadcast') {
                         await this.client.readMessages([received.key]);
@@ -1362,7 +1358,6 @@ export class BaileysStartupService extends ChannelStartupService {
                     }
 
 
-                    console.log('message.upsert sent!')
                     this.sendDataWebhook(Events.MESSAGES_UPSERT, messageRaw);
 
                     await chatbotController.emit({
