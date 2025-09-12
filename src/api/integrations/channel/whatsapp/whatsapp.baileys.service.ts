@@ -1197,19 +1197,8 @@ export class BaileysStartupService extends ChannelStartupService {
                         console.log('Recovering message lost messageId', received.key.id);
                         this.logger.info(`Recovering message lost messageId: ${received.key.id}`);
 
-                        await this.baileysCache.set(cacheId, {
-                            message: received,
-                            retry: 0,
-                        });
 
                         continue;
-                    }
-
-                    const retryCache = (await this.baileysCache.get(received.key.id)) || null;
-
-                    if (retryCache) {
-                        this.logger.info('Recovered message lost');
-                        await this.baileysCache.delete(received.key.id);
                     }
 
                     if (received.message?.protocolMessage || received.message?.pollUpdateMessage || !received?.message
