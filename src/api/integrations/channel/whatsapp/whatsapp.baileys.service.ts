@@ -1161,6 +1161,10 @@ export class BaileysStartupService extends ChannelStartupService {
                             console.log('Message received from phone, id=', requestId, received);
                         }
 
+                        if (!received.key.participant && received.participant) {
+                            received.key.participant = received.participant;
+                        }
+
                         if (text == 'onDemandHistSync') {
                             const messageId = await this.client.fetchMessageHistory(50, received.key, received.messageTimestamp!);
                             console.log('requested on-demand sync, id=', messageId);
