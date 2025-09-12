@@ -1289,7 +1289,10 @@ export class BaileysStartupService extends ChannelStartupService {
                         }
 
                         if (isMedia) {
+                            console.log('is media message');
                             if (this.configService.get<S3>('S3').ENABLE) {
+
+                                console.log('S3 UPLOAD');
                                 try {
                                     const message: any = received;
                                     const media = await this.getBase64FromMediaMessage(
