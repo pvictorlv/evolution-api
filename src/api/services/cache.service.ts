@@ -65,11 +65,16 @@ export class CacheService {
     return this.cache.has(key);
   }
 
-  async delete(key: string) {
-    if (!this.cache) {
-      return;
+  async delete(key: any) {
+    try {
+      if (!this.cache) {
+        return;
+      }
+      return this.cache.delete(key);
+    } catch (error) {
+      this.logger.error(error);
+      return false;
     }
-    return this.cache.delete(key);
   }
 
   async hDelete(key: string, field: string) {
