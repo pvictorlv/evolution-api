@@ -1268,43 +1268,6 @@ export class BaileysStartupService extends ChannelStartupService {
                         await this.client.readMessages([received.key]);
                     }
 
-                    if (
-                        this.configService.get<Chatwoot>('CHATWOOT').ENABLED &&
-                        this.localChatwoot?.enabled &&
-                        !received.key.id.includes('@broadcast')
-                    ) {
-                        const chatwootSentMessage = await this.chatwootService.eventWhatsapp(
-                            Events.MESSAGES_UPSERT,
-                            {instanceName: this.instance.name, instanceId: this.instance.id},
-                            messageRaw,
-                        );
-
-                        if (chatwootSentMessage?.id) {
-                            messageRaw.chatwootMessageId = chatwootSentMessage.id;
-                            messageRaw.chatwootInboxId = chatwootSentMessage.inbox_id;
-                            messageRaw.chatwootConversationId = chatwootSentMessage.conversation_id;
-                        }
-                    }
-
-                    if (this.configService.get<Openai>('OPENAI').ENABLED && received?.message?.audioMessage) {
-                        const openAiDefaultSettings = await this.prismaRepository.openaiSetting.findFirst({
-                            where: {
-                                instanceId: this.instanceId,
-                            },
-                            include: {
-                                OpenaiCreds: true,
-                            },
-                        });
-
-                        if (openAiDefaultSettings && openAiDefaultSettings.openaiCredsId && openAiDefaultSettings.speechToText) {
-                            messageRaw.message.speechToText = await this.openaiService.speechToText(
-                                openAiDefaultSettings.OpenaiCreds,
-                                received,
-                                this.client.updateMediaMessage,
-                            );
-                        }
-                    }
-
                     if (this.configService.get<Database>('DATABASE').SAVE_DATA.NEW_MESSAGE) {
                         const msg = await this.prismaRepository.message.create({
                             data: messageRaw,
@@ -1371,6 +1334,8 @@ export class BaileysStartupService extends ChannelStartupService {
                                         data: messageRaw,
                                     });
                                 } catch (error) {
+                                    console.trace(error);
+                                    messageRaw.message.mediaUrl = 'Error downloading'
                                     this.logger.error(['Error on upload file to minio', error?.message, error?.stack]);
                                 }
                             }
