@@ -1139,8 +1139,6 @@ export class BaileysStartupService extends ChannelStartupService {
             },
             settings: any,
         ) => {
-            console.log("MSG RECEBIDA!!!", messages)
-
             try {
                 for (const received of messages) {
                     if (received.key.remoteJid?.includes('@lid') && received.key.remoteJidAlt) {
