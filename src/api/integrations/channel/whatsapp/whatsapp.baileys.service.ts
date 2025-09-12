@@ -663,11 +663,10 @@ export class BaileysStartupService extends ChannelStartupService {
             qrTimeout: 45_000,
             emitOwnEvents: true,
             shouldIgnoreJid: (jid) => {
-                const isGroupJid = this.localSettings.groupsIgnore && isJidGroup(jid);
                 const isBroadcast = !this.localSettings.readStatus && isJidBroadcast(jid);
                 const isNewsletter = isJidNewsletter(jid);
 
-                return isGroupJid || isBroadcast || isNewsletter;
+                return isBroadcast || isNewsletter;
             },
             syncFullHistory: true,
             shouldSyncHistoryMessage: (msg: proto.Message.IHistorySyncNotification) => {
@@ -1225,9 +1224,7 @@ export class BaileysStartupService extends ChannelStartupService {
                         received.messageTimestamp = received.messageTimestamp?.toNumber();
                     }
 
-                    if (settings?.groupsIgnore && received.key.remoteJid.includes('@g.us')) {
-                        continue;
-                    }
+
                     const existingChat = await this.prismaRepository.chat.findFirst({
                         where: {instanceId: this.instanceId, remoteJid: received.key.remoteJid},
                         select: {id: true, name: true},
@@ -1486,9 +1483,7 @@ export class BaileysStartupService extends ChannelStartupService {
             const readChatToUpdate: Record<string, true> = {}; // {remoteJid: true}
 
             for await (const {key, update} of args) {
-                if (settings?.groupsIgnore && key.remoteJid?.includes('@g.us')) {
-                    continue;
-                }
+
 
                 if (key.remoteJid?.includes('@lid') && key.remoteJidAlt) {
                     key.remoteJid = key.remoteJidAlt;
