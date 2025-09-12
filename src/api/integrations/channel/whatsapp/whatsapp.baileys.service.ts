@@ -648,7 +648,7 @@ export class BaileysStartupService extends ChannelStartupService {
             printQRInTerminal: false,
             auth: {
                 creds: this.instance.authState.state.creds,
-                keys: makeCacheableSignalKeyStore(this.instance.authState.state.keys, P({level: 'trace'}) as any),
+                keys: makeCacheableSignalKeyStore(this.instance.authState.state.keys, P({level: this.logBaileys}) as any),
             },
             msgRetryCounterCache: this.msgRetryCounterCache,
             generateHighQualityLinkPreview: true,
