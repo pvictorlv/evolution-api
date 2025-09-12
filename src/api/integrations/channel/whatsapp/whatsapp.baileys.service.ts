@@ -1141,6 +1141,7 @@ export class BaileysStartupService extends ChannelStartupService {
         ) => {
             try {
                 for (const received of messages) {
+                    let cacheId = received.key.id;
                     if (received.key.remoteJid?.includes('@lid') && received.key.remoteJidAlt) {
                         (
                             received.key as {
@@ -1179,12 +1180,12 @@ export class BaileysStartupService extends ChannelStartupService {
                         await this.sendDataWebhook(Events.MESSAGES_EDITED, editedMessage);
                     }
 
-                    const messageKey = `${this.instance.id}_${received.key.id}`;
+                    const messageKey = `${this.instance.id}_${cacheId}`;
                     const cached = await this.baileysCache.get(messageKey);
 
                     if (cached && !editedMessage) {
-                        console.log('Message duplicated ignored', received.key.id);
-                        this.logger.info(`Message duplicated ignored: ${received.key.id}`);
+                        console.log('Message duplicated ignored', cacheId);
+                        this.logger.info(`Message duplicated ignored: ${cacheId}`);
                         continue;
                     }
 
@@ -1196,7 +1197,7 @@ export class BaileysStartupService extends ChannelStartupService {
                         console.log('Recovering message lost messageId', received.key.id);
                         this.logger.info(`Recovering message lost messageId: ${received.key.id}`);
 
-                        await this.baileysCache.set(received.key.id, {
+                        await this.baileysCache.set(cacheId, {
                             message: received,
                             retry: 0,
                         });
@@ -1211,7 +1212,9 @@ export class BaileysStartupService extends ChannelStartupService {
                         await this.baileysCache.delete(received.key.id);
                     }
 
-                    if (received.message?.protocolMessage || received.message?.pollUpdateMessage || !received?.message) {
+                    if (received.message?.protocolMessage || received.message?.pollUpdateMessage || !received?.message
+                    || received.message?.senderKeyDistributionMessage
+                    ) {
                         console.log('protocolMessage or pollUpdateMessage or empty message, ignored', received);
                         console.log('message', received?.message);
                         console.log('received', received);
