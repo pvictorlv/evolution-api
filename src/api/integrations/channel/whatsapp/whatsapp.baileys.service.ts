@@ -1155,11 +1155,12 @@ export class BaileysStartupService extends ChannelStartupService {
 
                         if (text == 'requestPlaceholder' && !requestId) {
                             const messageId = await this.client.requestPlaceholderResend(received.key);
-
                             console.log('requested placeholder resync, id=', messageId);
                         } else if (requestId) {
                             console.log('Message received from phone, id=', requestId, received);
+                            cacheId = requestId;
                         }
+
 
                         if (!received.key.participant && received.participant) {
                             received.key.participant = received.participant;
