@@ -1287,7 +1287,7 @@ export class BaileysStartupService extends ChannelStartupService {
                         }
 
                         if (isMedia) {
-                            // console.log('is media message');
+                            console.log('is media message');
                             if (this.configService.get<S3>('S3').ENABLE) {
 
                                 // console.log('S3 UPLOAD');
@@ -1362,6 +1362,7 @@ export class BaileysStartupService extends ChannelStartupService {
                     }
 
 
+                    console.log('upsert message!')
                     this.sendDataWebhook(Events.MESSAGES_UPSERT, messageRaw);
 
                     await chatbotController.emit({
