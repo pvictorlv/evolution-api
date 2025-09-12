@@ -1289,10 +1289,10 @@ export class BaileysStartupService extends ChannelStartupService {
                         }
 
                         if (isMedia) {
-                            console.log('is media message');
+                            // console.log('is media message');
                             if (this.configService.get<S3>('S3').ENABLE) {
 
-                                console.log('S3 UPLOAD');
+                                // console.log('S3 UPLOAD');
                                 try {
                                     const message: any = received;
                                     const media = await this.getBase64FromMediaMessage(
@@ -3748,12 +3748,12 @@ export class BaileysStartupService extends ChannelStartupService {
             }
 
             if (typeof mediaMessage['mediaKey'] === 'object') {
-                console.log('mediaKey is an object, converting to string...');
-                console.log(msg.message);
+                // console.log('mediaKey is an object, converting to string...');
+                // console.log(msg.message);
                 // msg.message = JSON.parse(JSON.stringify(msg.message));
             }
 
-            console.log('trying to download media message...');
+            // console.log('trying to download media message...');
             const buffer = await downloadMediaMessage(
                 msg,
                 'buffer',
