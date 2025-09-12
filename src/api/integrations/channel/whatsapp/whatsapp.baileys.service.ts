@@ -4411,48 +4411,6 @@ export class BaileysStartupService extends ChannelStartupService {
         throw new Error('Method not available in the Baileys service');
     }
 
-    private sanitizeMessageContent(messageContent: any): any {
-        if (!messageContent) return messageContent;
-
-        // Deep clone and sanitize to avoid modifying original
-        return JSON.parse(
-            JSON.stringify(messageContent, (key, value) => {
-                // Convert Long objects to numbers
-                if (Long.isLong(value)) {
-                    return value.toNumber();
-                }
-
-                // Convert Uint8Array to regular arrays
-                if (value instanceof Uint8Array) {
-                    return Array.from(value);
-                }
-
-                // Remove functions and other non-serializable objects
-                if (typeof value === 'function') {
-                    return undefined;
-                }
-
-                // Handle objects with toJSON method
-                if (value && typeof value === 'object' && typeof value.toJSON === 'function') {
-                    return value.toJSON();
-                }
-
-                // Handle special objects that might not serialize properly
-                if (value && typeof value === 'object') {
-                    // Check if it's a plain object or has prototype issues
-                    try {
-                        JSON.stringify(value);
-                        return value;
-                    } catch (e) {
-                        // If it can't be stringified, return a safe representation
-                        return '[Non-serializable object]';
-                    }
-                }
-
-                return value;
-            }),
-        );
-    }
 
     private prepareMessage(message: proto.IWebMessageInfo): any {
         const contentType = getContentType(message.message);
@@ -4462,8 +4420,8 @@ export class BaileysStartupService extends ChannelStartupService {
             key: message.key,
             pushName: message.pushName || message?.participant,
             status: status[message.status],
-            message: this.sanitizeMessageContent({...message.message}),
-            contextInfo: this.sanitizeMessageContent(contentMsg?.contextInfo),
+            message: { ...message.message },
+            contextInfo: contentMsg?.contextInfo,
             messageType: contentType || 'unknown',
             messageTimestamp: Long.isLong(message.messageTimestamp)
                 ? (message.messageTimestamp as Long).toNumber()
