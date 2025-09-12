@@ -1183,6 +1183,7 @@ export class BaileysStartupService extends ChannelStartupService {
                     const cached = await this.baileysCache.get(messageKey);
 
                     if (cached && !editedMessage) {
+                        console.log('Message duplicated ignored', received.key.id);
                         this.logger.info(`Message duplicated ignored: ${received.key.id}`);
                         continue;
                     }
@@ -1250,6 +1251,8 @@ export class BaileysStartupService extends ChannelStartupService {
 
                     const messageRaw = this.prepareMessage(received);
 
+                    console.log('message raw', messageRaw);
+
                     const isMedia =
                         received?.message?.imageMessage ||
                         received?.message?.videoMessage ||
@@ -1258,6 +1261,8 @@ export class BaileysStartupService extends ChannelStartupService {
                         received?.message?.documentWithCaptionMessage ||
                         received?.message?.ptvMessage ||
                         received?.message?.audioMessage;
+
+                    console.log('is media', isMedia);
 
                     if (this.localSettings.readMessages && received.key.id !== 'status@broadcast') {
                         await this.client.readMessages([received.key]);
@@ -1364,8 +1369,8 @@ export class BaileysStartupService extends ChannelStartupService {
                         }
                     }
 
-                    this.logger.log(messageRaw);
 
+                    console.log('message.upsert sent!')
                     this.sendDataWebhook(Events.MESSAGES_UPSERT, messageRaw);
 
                     await chatbotController.emit({
@@ -1392,6 +1397,7 @@ export class BaileysStartupService extends ChannelStartupService {
                     };
 
                     if (contactRaw.remoteJid === 'status@broadcast') {
+                        console.log('status@broadcast ignored for contact');
                         continue;
                     }
 
