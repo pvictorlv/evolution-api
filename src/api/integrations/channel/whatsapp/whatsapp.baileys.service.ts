@@ -1362,7 +1362,7 @@ export class BaileysStartupService extends ChannelStartupService {
 
                     await this.prismaRepository.message.update({
                       where: { id: msg.id },
-                      data: messageRaw,
+                      data: sanitizeMessageContent(messageRaw),
                     });
                   } catch (error) {
                     console.trace(error);
@@ -2386,7 +2386,7 @@ export class BaileysStartupService extends ChannelStartupService {
 
               await this.prismaRepository.message.update({
                 where: { id: msg.id },
-                data: messageRaw,
+                data: sanitizeMessageContent(messageRaw),
               });
             } catch (e) {
               this.logger.error(['Error on insert media record in database', e?.message, e?.stack]);
