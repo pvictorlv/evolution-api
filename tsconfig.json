@@ -8,6 +8,7 @@
     "rootDir": "./",
     "resolveJsonModule": true,
     "removeComments": true,
+    "sourceMap": true,
     "outDir": "./dist",
     "noEmitOnError": true,
     "esModuleInterop": true,
