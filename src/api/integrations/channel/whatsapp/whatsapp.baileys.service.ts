@@ -251,13 +251,19 @@ export class BaileysStartupService extends ChannelStartupService {
       where: { sessionId: this.instanceId },
     });
     if (sessionExists) {
+      try {
       await this.prismaRepository.session.delete({
         where: {
           sessionId: this.instanceId,
         },
       });
+    } catch (e) {
+        this.logger.error('Error deleting session: ' + e);
+      }
     }
-  }
+
+    }
+
 
   public async getProfileName() {
     let profileName = this.client.user?.name ?? this.client.user?.verifiedName;
@@ -813,12 +819,15 @@ export class BaileysStartupService extends ChannelStartupService {
     },
 
     'chats.delete': async (chats: string[]) => {
-      chats.forEach(
-        async (chat) =>
+      for (const chat of chats) {
+        try {
           await this.prismaRepository.chat.deleteMany({
-            where: { instanceId: this.instanceId, remoteJid: chat },
-          }),
-      );
+            where: {instanceId: this.instanceId, remoteJid: chat},
+          });
+        } catch (e) {
+            this.logger.error('Error deleting chat: ' + e);
+        }
+      }
 
       this.sendDataWebhook(Events.CHATS_DELETE, [...chats]);
     },
@@ -975,6 +984,53 @@ export class BaileysStartupService extends ChannelStartupService {
       }
     },
   };
+  private sanitizeMessageContent(messageContent: any): any {
+    try {
+      if (!messageContent) return messageContent;
+
+      // Deep clone and sanitize to avoid modifying original
+      return JSON.parse(
+          JSON.stringify(messageContent, (key, value) => {
+            // Convert Long objects to numbers
+            if (Long.isLong(value)) {
+              return value.toNumber();
+            }
+
+            // Convert Uint8Array to regular arrays
+            if (value instanceof Uint8Array) {
+              return Array.from(value);
+            }
+
+            // Remove functions and other non-serializable objects
+            if (typeof value === 'function') {
+              return undefined;
+            }
+
+            // Handle objects with toJSON method
+            if (value && typeof value === 'object' && typeof value.toJSON === 'function') {
+              return value.toJSON();
+            }
+
+            // Handle special objects that might not serialize properly
+            if (value && typeof value === 'object') {
+              // Check if it's a plain object or has prototype issues
+              try {
+                JSON.stringify(value);
+                return value;
+              } catch (e) {
+                // If it can't be stringified, return a safe representation
+                return '[Non-serializable object]';
+              }
+            }
+
+            return value;
+          }),
+      );
+    } catch (e) {
+        this.logger.error('Error sanitizing message content: ' + e.toString());
+        return messageContent;
+    }
+  }
 
   private readonly messageHandle = {
     'messaging-history.set': async ({
@@ -1106,7 +1162,7 @@ export class BaileysStartupService extends ChannelStartupService {
         if (this.configService.get<Database>('DATABASE').SAVE_DATA.HISTORIC) {
           try {
             await this.prismaRepository.message.createMany({
-              data: messagesRaw,
+              data: this.sanitizeMessageContent(messagesRaw),
               skipDuplicates: true,
             });
           } catch (error) {
@@ -1283,7 +1339,7 @@ export class BaileysStartupService extends ChannelStartupService {
             let msg = messageRaw;
             try {
               msg = await this.prismaRepository.message.create({
-                data: messageRaw,
+                data: this.sanitizeMessageContent(messageRaw),
               });
 
               if (received.key.fromMe === false) {
