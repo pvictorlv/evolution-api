@@ -3763,7 +3763,7 @@ export class BaileysStartupService extends ChannelStartupService {
       const m = data?.message;
       const convertToMp4 = data?.convertToMp4 ?? false;
 
-      const msg = m?.message ? m : ((await this.getMessage(m.key, true)) as proto.IWebMessageInfo);
+      let msg = m?.message ? m : ((await this.getMessage(m.key, true)) as proto.IWebMessageInfo);
 
       if (!msg) {
         throw 'Message not found';
@@ -3793,7 +3793,7 @@ export class BaileysStartupService extends ChannelStartupService {
       if (typeof mediaMessage['mediaKey'] === 'object') {
         console.log('mediaKey is an object, converting to string...');
         console.log(msg.message);
-        msg.message = JSON.parse(JSON.stringify(msg.message, null, 2));
+        msg = JSON.parse(JSON.stringify(msg, null, 2));
       }
 
       // console.log('trying to download media message...');
