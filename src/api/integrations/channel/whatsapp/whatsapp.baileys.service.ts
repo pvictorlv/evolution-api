@@ -1228,12 +1228,22 @@ export class BaileysStartupService extends ChannelStartupService {
             continue;
           }
 
+          const isMedia =
+              received?.message?.imageMessage ||
+              received?.message?.videoMessage ||
+              received?.message?.stickerMessage ||
+              received?.message?.documentMessage ||
+              received?.message?.documentWithCaptionMessage ||
+              received?.message?.ptvMessage ||
+              received?.message?.audioMessage;
+
+
           if (
             (received.message?.protocolMessage ||
               received.message?.pollUpdateMessage ||
               !received?.message ||
               received.message?.senderKeyDistributionMessage) &&
-            !received.message?.conversation
+            (!received.message?.conversation) && !isMedia && !received.message?.extendedTextMessage?.text
           ) {
             console.log('protocolMessage or pollUpdateMessage or empty message, ignored', received);
             continue;
@@ -1271,14 +1281,6 @@ export class BaileysStartupService extends ChannelStartupService {
 
           const messageRaw = this.prepareMessage(received);
 
-          const isMedia =
-            received?.message?.imageMessage ||
-            received?.message?.videoMessage ||
-            received?.message?.stickerMessage ||
-            received?.message?.documentMessage ||
-            received?.message?.documentWithCaptionMessage ||
-            received?.message?.ptvMessage ||
-            received?.message?.audioMessage;
 
           if (this.localSettings.readMessages && received.key.id !== 'status@broadcast') {
             await this.client.readMessages([received.key]);
