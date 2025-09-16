@@ -3791,9 +3791,9 @@ export class BaileysStartupService extends ChannelStartupService {
       }
 
       if (typeof mediaMessage['mediaKey'] === 'object') {
-        // console.log('mediaKey is an object, converting to string...');
-        // console.log(msg.message);
-        // msg.message = JSON.parse(JSON.stringify(msg.message));
+        console.log('mediaKey is an object, converting to string...');
+        console.log(msg.message);
+        msg.message = JSON.parse(JSON.stringify(msg.message, null, 2));
       }
 
       // console.log('trying to download media message...');
