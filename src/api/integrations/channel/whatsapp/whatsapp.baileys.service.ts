@@ -1063,26 +1063,6 @@ export class BaileysStartupService extends ChannelStartupService {
 
         const messagesRaw: any[] = [];
 
-        const messagesRepository: Set<string> = new Set(
-          chatwootImport.getRepositoryMessagesCache(instance) ??
-            (
-              await this.prismaRepository.message.findMany({
-                select: { key: true },
-                where: { instanceId: this.instanceId },
-              })
-            ).map((message) => {
-              const key = message.key as {
-                id: string;
-              };
-
-              return key.id;
-            }),
-        );
-
-        if (chatwootImport.getRepositoryMessagesCache(instance) === null) {
-          chatwootImport.setRepositoryMessagesCache(instance, messagesRepository);
-        }
-
         for (const m of messages) {
           if (!m.message || !m.key || !m.messageTimestamp) {
             continue;
@@ -1100,10 +1080,6 @@ export class BaileysStartupService extends ChannelStartupService {
             if (m.messageTimestamp <= timestampLimitToImport) {
               continue;
             }
-          }
-
-          if (messagesRepository?.has(m.key.id)) {
-            continue;
           }
 
           messagesRaw.push(this.prepareMessage(m));
@@ -1143,9 +1119,8 @@ export class BaileysStartupService extends ChannelStartupService {
             })),
         );
 
-        contacts = undefined;
-        messages = undefined;
-        chats = undefined;
+
+
       } catch (error) {
         this.logger.error(error);
       }
