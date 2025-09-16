@@ -1118,9 +1118,6 @@ export class BaileysStartupService extends ChannelStartupService {
               name: c.name ?? c.notify,
             })),
         );
-
-
-
       } catch (error) {
         this.logger.error(error);
       }
@@ -1204,21 +1201,31 @@ export class BaileysStartupService extends ChannelStartupService {
           }
 
           const isMedia =
-              received?.message?.imageMessage ||
-              received?.message?.videoMessage ||
-              received?.message?.stickerMessage ||
-              received?.message?.documentMessage ||
-              received?.message?.documentWithCaptionMessage ||
-              received?.message?.ptvMessage ||
-              received?.message?.audioMessage;
-
+            received?.message?.imageMessage ||
+            received?.message?.videoMessage ||
+            received?.message?.stickerMessage ||
+            received?.message?.documentMessage ||
+            received?.message?.documentWithCaptionMessage ||
+            received?.message?.ptvMessage ||
+            received?.message?.audioMessage;
 
           if (
             (received.message?.protocolMessage ||
               received.message?.pollUpdateMessage ||
               !received?.message ||
               received.message?.senderKeyDistributionMessage) &&
-            (!received.message?.conversation) && !isMedia && !received.message?.extendedTextMessage?.text
+            !received.message?.conversation &&
+            !isMedia &&
+            !received.message?.extendedTextMessage?.text &&
+            !received.message?.reactionMessage &&
+            !received.message?.contactMessage &&
+            !received.message?.contactsArrayMessage &&
+            !received.message?.locationMessage &&
+            !received.message?.liveLocationMessage &&
+            !received.message?.buttonsMessage &&
+            !received.message?.templateMessage &&
+            !received.message?.listMessage &&
+            !received.message?.viewOnceMessage
           ) {
             console.log('protocolMessage or pollUpdateMessage or empty message, ignored', received);
             continue;
@@ -1255,7 +1262,6 @@ export class BaileysStartupService extends ChannelStartupService {
           }
 
           const messageRaw = this.prepareMessage(received);
-
 
           if (this.localSettings.readMessages && received.key.id !== 'status@broadcast') {
             await this.client.readMessages([received.key]);
