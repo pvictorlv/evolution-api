@@ -253,18 +253,16 @@ export class BaileysStartupService extends ChannelStartupService {
     });
     if (sessionExists) {
       try {
-      await this.prismaRepository.session.delete({
-        where: {
-          sessionId: this.instanceId,
-        },
-      });
-    } catch (e) {
+        await this.prismaRepository.session.delete({
+          where: {
+            sessionId: this.instanceId,
+          },
+        });
+      } catch (e) {
         this.logger.error('Error deleting session: ' + e);
       }
     }
-
-    }
-
+  }
 
   public async getProfileName() {
     let profileName = this.client.user?.name ?? this.client.user?.verifiedName;
@@ -823,10 +821,10 @@ export class BaileysStartupService extends ChannelStartupService {
       for (const chat of chats) {
         try {
           await this.prismaRepository.chat.deleteMany({
-            where: {instanceId: this.instanceId, remoteJid: chat},
+            where: { instanceId: this.instanceId, remoteJid: chat },
           });
         } catch (e) {
-            this.logger.error('Error deleting chat: ' + e);
+          this.logger.error('Error deleting chat: ' + e);
         }
       }
 
@@ -985,7 +983,6 @@ export class BaileysStartupService extends ChannelStartupService {
       }
     },
   };
-
 
   private readonly messageHandle = {
     'messaging-history.set': async ({
@@ -1232,10 +1229,11 @@ export class BaileysStartupService extends ChannelStartupService {
           }
 
           if (
-            received.message?.protocolMessage ||
-            received.message?.pollUpdateMessage ||
-            !received?.message ||
-            received.message?.senderKeyDistributionMessage
+            (received.message?.protocolMessage ||
+              received.message?.pollUpdateMessage ||
+              !received?.message ||
+              received.message?.senderKeyDistributionMessage) &&
+            !received.message?.conversation
           ) {
             console.log('protocolMessage or pollUpdateMessage or empty message, ignored', received);
             continue;
