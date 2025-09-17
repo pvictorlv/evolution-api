@@ -3421,6 +3421,7 @@ export class BaileysStartupService extends ChannelStartupService {
     onWhatsapp.push(...groups);
 
     console.log('onWhatsapp', onWhatsapp);
+    console.log('jids', jids);
 
     // USERS
     const contacts: any[] = await this.prismaRepository.contact.findMany({
