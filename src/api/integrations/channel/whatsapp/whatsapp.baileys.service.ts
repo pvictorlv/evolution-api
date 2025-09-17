@@ -822,13 +822,13 @@ export class BaileysStartupService extends ChannelStartupService {
   };
 
   private readonly contactHandle = {
-    'lid-mapping.update': async (mapping: { lid: string; pn: string }) => {
+    'chats.phoneNumberShare': async (mapping: { lid: string; jid: string }) => {
       console.log('LID MAPPING:', mapping);
 
       try {
         await saveOnWhatsappCache([
           {
-            remoteJid: mapping.pn,
+            remoteJid: mapping.jid,
             lid: mapping.lid,
           },
         ]);
@@ -839,7 +839,7 @@ export class BaileysStartupService extends ChannelStartupService {
       this.sendDataWebhook(Events.LID_MAPPING_UPDATE, {
         instanceId: this.instanceId,
         lid: mapping.lid,
-        pn: mapping.pn,
+        pn: mapping.jid,
       });
     },
     'contacts.upsert': async (contacts: Contact[]) => {
@@ -1774,10 +1774,10 @@ export class BaileysStartupService extends ChannelStartupService {
           this.sendDataWebhook(Events.PRESENCE_UPDATE, payload);
         }
 
-        // lid-mapping.update
-        if (events['lid-mapping.update']) {
-          const payload = events['lid-mapping.update'];
-          this.contactHandle['lid-mapping.update'](payload);
+        // chats.phoneNumberShare
+        if (events['chats.phoneNumberShare']) {
+          const payload = events['chats.phoneNumberShare'];
+          this.contactHandle['chats.phoneNumberShare'](payload);
         }
 
         if (!settings?.groupsIgnore) {
