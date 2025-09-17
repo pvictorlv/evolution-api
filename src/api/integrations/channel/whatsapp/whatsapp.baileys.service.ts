@@ -2480,6 +2480,7 @@ export class BaileysStartupService extends ChannelStartupService {
       throw new BadRequestException('Text is required');
     }
 
+    console.log('sending message', data);
     return await this.sendMessageWithTyping(
       data.number,
       {
