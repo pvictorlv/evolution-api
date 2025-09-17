@@ -3420,10 +3420,14 @@ export class BaileysStartupService extends ChannelStartupService {
     );
     onWhatsapp.push(...groups);
 
+    console.log('onWhatsapp', onWhatsapp);
+
     // USERS
     const contacts: any[] = await this.prismaRepository.contact.findMany({
       where: { instanceId: this.instanceId, remoteJid: { in: jids.users.map(({ jid }) => jid) } },
     });
+
+    console.log('contacts', contacts);
 
     // Separate @lid numbers from normal numbers
     const lidUsers = jids.users.filter(({ jid }) => jid.includes('@lid'));
