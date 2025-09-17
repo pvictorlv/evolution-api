@@ -92,7 +92,6 @@ import makeWASocket, {
   AnyMessageContent,
   BufferedEventData,
   BufferJSON,
-  CacheStore,
   Chat,
   ConnectionState,
   Contact,
@@ -101,16 +100,14 @@ import makeWASocket, {
   downloadMediaMessage,
   fetchLatestBaileysVersion,
   fetchLatestWaWebVersion,
-  generateWAMessageFromContent,
-  getAggregateVotesInPollMessage,
+  generateWAMessageFromContent, getAggregateVotesInPollMessage,
   getContentType,
   getDevice,
   GroupMetadata,
   isJidBroadcast,
   isJidGroup,
-  isJidNewsletter,
+  isJidNewsletter, isJidUser,
   isLidUser,
-  isPnUser,
   makeCacheableSignalKeyStore,
   MessageUpsertType,
   MessageUserReceiptUpdate,
@@ -148,8 +145,6 @@ import { PassThrough, Readable } from 'stream';
 import { v4 } from 'uuid';
 
 import { useVoiceCallsBaileys } from './voiceCalls/useVoiceCallsBaileys';
-import { Label } from 'baileys/lib/Types/Label';
-import { LabelAssociation } from 'baileys/lib/Types/LabelAssociation';
 
 const groupMetadataCache = new CacheService(new CacheEngine(configService, 'groups').getEngine());
 
@@ -230,8 +225,8 @@ export class BaileysStartupService extends ChannelStartupService {
   }
 
   private authStateProvider: AuthStateProvider;
-  private readonly msgRetryCounterCache: CacheStore = new NodeCache();
-  private readonly userDevicesCache: CacheStore = new NodeCache();
+  // private readonly msgRetryCounterCache: CacheStore = new NodeCache();
+  // private readonly userDevicesCache: CacheStore = new NodeCache();
   private endSession = false;
   private logBaileys = this.configService.get<Log>('LOG').BAILEYS;
 
@@ -655,7 +650,7 @@ export class BaileysStartupService extends ChannelStartupService {
         creds: this.instance.authState.state.creds,
         keys: makeCacheableSignalKeyStore(this.instance.authState.state.keys, P({ level: this.logBaileys }) as any),
       },
-      msgRetryCounterCache: this.msgRetryCounterCache,
+      // msgRetryCounterCache: this.msgRetryCounterCache,
       generateHighQualityLinkPreview: true,
       getMessage: async (key) => (await this.getMessage(key)) as Promise<proto.IMessage>,
       ...browserOptions,
@@ -678,7 +673,7 @@ export class BaileysStartupService extends ChannelStartupService {
         return this.historySyncNotification(msg);
       },
       cachedGroupMetadata: this.getGroupMetadataCache,
-      userDevicesCache: this.userDevicesCache,
+      // userDevicesCache: this.userDevicesCache,
       transactionOpts: {
         maxCommitRetries: 10,
         delayBetweenTriesMs: 3000,
@@ -1464,8 +1459,8 @@ export class BaileysStartupService extends ChannelStartupService {
       const readChatToUpdate: Record<string, true> = {}; // {remoteJid: true}
 
       for await (const { key, update } of args) {
-        if (key.remoteJid?.includes('@lid') && key.remoteJidAlt) {
-          key.remoteJid = key.remoteJidAlt;
+        if (key.remoteJid?.includes('@lid') && key.senderPn) {
+          key.remoteJid = key.senderPn;
         }
 
         const updateKey = `${this.instance.id}_${key.id}_${update.status}`;
@@ -1509,7 +1504,7 @@ export class BaileysStartupService extends ChannelStartupService {
             fromMe: key.fromMe,
             participant: key?.remoteJid,
             status: status[update.status] ?? 'DELETED',
-            pollUpdates,
+            // pollUpdates,
             instanceId: this.instanceId,
           };
 
@@ -1639,7 +1634,7 @@ export class BaileysStartupService extends ChannelStartupService {
     },
   };
 
-  private readonly labelHandle = {
+ /* private readonly labelHandle = {
     [Events.LABELS_EDIT]: async (label: Label) => {
       this.sendDataWebhook(Events.LABELS_EDIT, { ...label, instance: this.instance.name });
 
@@ -1707,7 +1702,7 @@ export class BaileysStartupService extends ChannelStartupService {
       });
     },
   };
-
+*/
   private eventHandler() {
     this.client.ev.process(async (events) => {
       if (!this.endSession) {
@@ -1832,7 +1827,7 @@ export class BaileysStartupService extends ChannelStartupService {
           const payload = events['contacts.update'];
           this.contactHandle['contacts.update'](payload);
         }
-
+/*
         if (events[Events.LABELS_ASSOCIATION]) {
           const payload = events[Events.LABELS_ASSOCIATION];
           this.labelHandle[Events.LABELS_ASSOCIATION](payload, database);
@@ -1843,7 +1838,7 @@ export class BaileysStartupService extends ChannelStartupService {
           const payload = events[Events.LABELS_EDIT];
           this.labelHandle[Events.LABELS_EDIT](payload);
           return;
-        }
+        }*/
       }
     });
   }
@@ -2021,7 +2016,7 @@ export class BaileysStartupService extends ChannelStartupService {
       m.key = {
         id: id,
         remoteJid: sender,
-        participant: isPnUser(sender) || isLidUser(sender) ? sender : undefined,
+        participant: isJidUser(sender) || isLidUser(sender) ? sender : undefined,
         fromMe: true,
       };
       for (const [key, value] of Object.entries(m)) {
@@ -3563,7 +3558,7 @@ export class BaileysStartupService extends ChannelStartupService {
     try {
       const keys: proto.IMessageKey[] = [];
       data.readMessages.forEach((read) => {
-        if (isJidGroup(read.remoteJid) || isPnUser(read.remoteJid) || isLidUser(read.remoteJid)) {
+        if (isJidGroup(read.remoteJid) || isJidUser(read.remoteJid) || isLidUser(read.remoteJid)) {
           keys.push({
             remoteJid: read.remoteJid,
             fromMe: read.fromMe,
@@ -3965,7 +3960,7 @@ export class BaileysStartupService extends ChannelStartupService {
       throw new InternalServerErrorException('Error updating profile picture', error.toString());
     }
   }
-
+/*
   public async removeProfilePicture() {
     try {
       await this.client.removeProfilePicture(this.instance.wuid);
@@ -3976,7 +3971,7 @@ export class BaileysStartupService extends ChannelStartupService {
     } catch (error) {
       throw new InternalServerErrorException('Error removing profile picture', error.toString());
     }
-  }
+  }*/
 
   public async blockUser(data: BlockUserDto) {
     try {
@@ -4065,6 +4060,7 @@ export class BaileysStartupService extends ChannelStartupService {
     }));
   }
 
+/*
   public async handleLabel(data: HandleLabelDto) {
     const whatsappContact = await this.whatsappNumber({ numbers: [data.number] });
     if (whatsappContact.length === 0) {
@@ -4092,6 +4088,7 @@ export class BaileysStartupService extends ChannelStartupService {
       throw new BadRequestException(`Unable to ${data.action} label to chat`, error.toString());
     }
   }
+*/
 
   // Group
   private async updateGroupMetadataCache(groupJid: string) {
@@ -4613,7 +4610,7 @@ export class BaileysStartupService extends ChannelStartupService {
   }
 
   public async baileysCreateParticipantNodes(jids: string[], message: proto.IMessage, extraAttrs: any) {
-    const response = await this.client.createParticipantNodes(jids, message, extraAttrs);
+   /* const response = await this.client.createParticipantNodes(jids, message, extraAttrs);
 
     const convertedResponse = {
       ...response,
@@ -4626,7 +4623,8 @@ export class BaileysStartupService extends ChannelStartupService {
       })),
     };
 
-    return convertedResponse;
+    return convertedResponse;*/
+    return null;
   }
 
   public async baileysSendNode(stanza: any) {
@@ -4650,15 +4648,7 @@ export class BaileysStartupService extends ChannelStartupService {
 
   public async baileysSignalRepositoryDecryptMessage(jid: string, type: 'pkmsg' | 'msg', ciphertext: string) {
     try {
-      const ciphertextBuffer = Buffer.from(ciphertext, 'base64');
-
-      const response = await this.client.signalRepository.decryptMessage({
-        jid,
-        type,
-        ciphertext: ciphertextBuffer,
-      });
-
-      return response instanceof Uint8Array ? Buffer.from(response).toString('base64') : response;
+      return null;
     } catch (error) {
       this.logger.error('Error decrypting message:');
       this.logger.error(error);
