@@ -3389,6 +3389,7 @@ export class BaileysStartupService extends ChannelStartupService {
       users: { number: string; jid: string; name?: string }[];
     } = { groups: [], broadcast: [], users: [] };
 
+    console.log('data.numbers', data.numbers);
     data.numbers.forEach((number) => {
       const jid = createJid(number);
 
