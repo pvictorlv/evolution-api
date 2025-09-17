@@ -1057,8 +1057,8 @@ export class BaileysStartupService extends ChannelStartupService {
             continue;
           }
 
-          if (m.key.remoteJid?.includes('@lid') && m.key.remoteJidAlt) {
-            m.key.remoteJid = m.key.remoteJidAlt;
+          if (m.key.remoteJid?.includes('@lid') && m.key.senderPn) {
+            m.key.remoteJid = m.key.senderPn;
           }
 
           if (Long.isLong(m?.messageTimestamp)) {
@@ -1127,13 +1127,13 @@ export class BaileysStartupService extends ChannelStartupService {
       try {
         for (const received of messages) {
           let cacheId = received.key.id;
-          if (received.key.remoteJid?.includes('@lid') && received.key.remoteJidAlt) {
+          if (received.key.remoteJid?.includes('@lid') && received.key.senderPn) {
             (
               received.key as {
                 previousRemoteJid?: string | null;
               }
             ).previousRemoteJid = received.key.remoteJid;
-            received.key.remoteJid = received.key.remoteJidAlt;
+            received.key.remoteJid = received.key.senderPn;
           }
           if (received.message?.conversation || received.message?.extendedTextMessage?.text) {
             const text = received.message?.conversation || received.message?.extendedTextMessage?.text;
