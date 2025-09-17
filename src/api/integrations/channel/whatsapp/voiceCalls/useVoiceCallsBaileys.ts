@@ -83,11 +83,11 @@ export const useVoiceCallsBaileys = async (
 
   socket.on('createParticipantNodes', async (jids, message, extraAttrs, callback) => {
     try {
-      const response = await baileys_sock.createParticipantNodes(jids, message, extraAttrs);
+     /*/!* const response = await baileys_sock.createParticipantNodes(jids, message, extraAttrs);
 
-      callback(response, true);
+      callback(response, true);*!/
 
-      if (logger) console.log('[*] Success on call createParticipantNodes function', response);
+      if (logger) console.log('[*] Success on call createParticipantNodes function', response);*/
     } catch (error) {
       if (logger) console.error('[*] Error on call createParticipantNodes function', error);
     }
@@ -132,7 +132,7 @@ export const useVoiceCallsBaileys = async (
 
   socket.on('signalRepository:decryptMessage', async (jid, type, ciphertext, callback) => {
     try {
-      const response = await baileys_sock.signalRepository.decryptMessage({
+    /*  const response = await baileys_sock.signalRepository.decryptMessage({
         jid: jid,
         type: type,
         ciphertext: ciphertext,
@@ -140,7 +140,7 @@ export const useVoiceCallsBaileys = async (
 
       callback(response);
 
-      if (logger) console.log('[*] Success on call signalRepository:decryptMessage function', response);
+      if (logger) console.log('[*] Success on call signalRepository:decryptMessage function', response);*/
     } catch (error) {
       if (logger) console.error('[*] Error on call signalRepository:decryptMessage function', error);
     }

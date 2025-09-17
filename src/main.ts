@@ -15,7 +15,7 @@ import { ServerUP } from '@utils/server-up';
 import axios from 'axios';
 import compression from 'compression';
 import cors from 'cors';
-import express, { json, NextFunction, Request, Response, urlencoded } from 'express';
+import express, {json, NextFunction, Request, RequestHandler, Response, urlencoded} from 'express';
 import { join } from 'path';
 
 function initWA() {
@@ -36,25 +36,24 @@ async function bootstrap() {
   const prismaRepository = new PrismaRepository(configService);
   await prismaRepository.onModuleInit();
 
-  app.use(
-    cors({
-      origin(requestOrigin, callback) {
-        const { ORIGIN } = configService.get<Cors>('CORS');
-        if (ORIGIN.includes('*')) {
-          return callback(null, true);
-        }
-        if (ORIGIN.indexOf(requestOrigin) !== -1) {
-          return callback(null, true);
-        }
-        return callback(new Error('Not allowed by CORS'));
-      },
-      methods: [...configService.get<Cors>('CORS').METHODS],
-      credentials: configService.get<Cors>('CORS').CREDENTIALS,
-    }),
-    urlencoded({ extended: true, limit: '136mb' }),
-    json({ limit: '136mb' }),
-    compression(),
-  );
+  app.use(cors({
+    origin(requestOrigin, callback) {
+      const { ORIGIN } = configService.get<Cors>('CORS');
+      if (ORIGIN.includes('*')) {
+        return callback(null, true);
+      }
+      if (requestOrigin && ORIGIN.indexOf(requestOrigin) !== -1) {
+        return callback(null, true);
+      }
+      return callback(new Error('Not allowed by CORS'));
+    },
+    methods: [...configService.get<Cors>('CORS').METHODS],
+    credentials: configService.get<Cors>('CORS').CREDENTIALS,
+  }));
+// Apply other middlewares
+  app.use(urlencoded({ extended: true, limit: '136mb' }));
+  app.use(json({ limit: '136mb' }));
+  app.use(compression() as any);
 
   app.set('view engine', 'hbs');
   app.set('views', join(ROOT_DIR, 'views'));
