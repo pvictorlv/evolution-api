@@ -65,7 +65,7 @@ export async function useMultiFileAuthStateRedisDb(
             for (const id in data[category]) {
               const value = data[category][id];
               const key = `${category}-${id}`;
-              tasks.push(value ? await writeData(value, key) : await removeData(key));
+              if (value) tasks.push(writeData(value, key));
             }
           }
 
