@@ -168,7 +168,7 @@ export default async function useMultiFileAuthStatePrisma(
               const value = data[category][id];
               const key = `${category}-${id}`;
 
-              if (value) tasks.push(writeData(value, key));
+              tasks.push(value ? writeData(value, key) : removeData(key));
             }
           }
           await Promise.all(tasks);
