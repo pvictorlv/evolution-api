@@ -1217,7 +1217,7 @@ export class BaileysStartupService extends ChannelStartupService {
             !received.message?.viewOnceMessage
           ) {
             console.log('protocolMessage or pollUpdateMessage or empty message, ignored', received);
-            console.log('protocolMessage or pollUpdateMessage or empty message, ignored', received.message?.peerDataOperationRequestResponseMessage);
+            console.log('peerDataOperationRequestResponseMessage', received.message?.peerDataOperationRequestResponseMessage);
             continue;
           }
 
