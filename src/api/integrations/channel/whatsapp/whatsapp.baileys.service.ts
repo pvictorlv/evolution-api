@@ -1181,7 +1181,11 @@ export class BaileysStartupService extends ChannelStartupService {
           if (
             received.messageStubParameters &&
             (received.messageStubParameters[0] === 'Message absent from node' ||
-              received.messageStubParameters[0] === 'Invalid PreKey ID')
+              received.messageStubParameters[0] === 'Invalid PreKey ID'
+            || received.messageStubParameters[0].includes('No sender key for')
+            || received.messageStubParameters[0].includes('Failed to decrypt message')
+            || received.messageStubParameters[0].includes('No session')
+            )
           ) {
             console.log('Recovering message lost messageId', received.key.id);
             this.logger.info(`Recovering message lost messageId: ${received.key.id}`);
@@ -1217,7 +1221,7 @@ export class BaileysStartupService extends ChannelStartupService {
             !received.message?.viewOnceMessage
           ) {
             console.log('protocolMessage or pollUpdateMessage or empty message, ignored', received);
-            console.log('peerDataOperationRequestResponseMessage', received.message?.peerDataOperationRequestResponseMessage);
+            console.log('peerDataOperationRequestResponseMessage', received.message?.protocolMessage?.peerDataOperationRequestResponseMessage);
             continue;
           }
 
