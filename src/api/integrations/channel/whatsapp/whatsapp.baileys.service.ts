@@ -1372,7 +1372,7 @@ export class BaileysStartupService extends ChannelStartupService {
             }
           }
 
-          console.log('upsert message!');
+          console.log('upsert message!', messageRaw);
           this.sendDataWebhook(Events.MESSAGES_UPSERT, messageRaw);
 
           await chatbotController.emit({
