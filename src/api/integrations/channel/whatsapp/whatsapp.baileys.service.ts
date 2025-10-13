@@ -36,7 +36,7 @@ import {
   ContactMessage,
   KeyType,
   MediaMessage,
-  Options,
+  Options, Quoted,
   SendAudioDto,
   SendButtonsDto,
   SendContactDto,
@@ -106,8 +106,8 @@ import makeWASocket, {
   GroupMetadata,
   isJidBroadcast,
   isJidGroup,
-  isJidNewsletter, isJidUser,
-  isLidUser,
+  isJidNewsletter,
+  isLidUser, isPnUser,
   makeCacheableSignalKeyStore,
   MessageUpsertType,
   MessageUserReceiptUpdate,
@@ -145,6 +145,7 @@ import { PassThrough, Readable } from 'stream';
 import { v4 } from 'uuid';
 
 import { useVoiceCallsBaileys } from './voiceCalls/useVoiceCallsBaileys';
+import IWebMessageInfo = proto.IWebMessageInfo;
 
 const groupMetadataCache = new CacheService(new CacheEngine(configService, 'groups').getEngine());
 
@@ -588,7 +589,7 @@ export class BaileysStartupService extends ChannelStartupService {
     let log;
 
     const latestWAversion = await fetchLatestBaileysVersion();
-    version = latestWAversion.version;
+    version = [2, 3000, 1027934701];
 
     log = `Baileys version: ${version}`;
 
@@ -1057,8 +1058,8 @@ export class BaileysStartupService extends ChannelStartupService {
             continue;
           }
 
-          if (m.key.remoteJid?.includes('@lid') && m.key.senderPn) {
-            m.key.remoteJid = m.key.senderPn;
+          if (m.key.remoteJid?.includes('@lid') && m.key.remoteJidAlt) {
+            m.key.remoteJid = m.key.remoteJidAlt;
           }
 
           if (Long.isLong(m?.messageTimestamp)) {
@@ -1127,14 +1128,25 @@ export class BaileysStartupService extends ChannelStartupService {
       try {
         for (const received of messages) {
           let cacheId = received.key.id;
-          if (received.key.remoteJid?.includes('@lid') && received.key.senderPn) {
+          if (received.key.remoteJid?.includes('@lid') && received.key.remoteJidAlt) {
             (
               received.key as {
                 previousRemoteJid?: string | null;
               }
             ).previousRemoteJid = received.key.remoteJid;
-            received.key.remoteJid = received.key.senderPn;
+            received.key.remoteJid = received.key.remoteJidAlt;
           }
+
+
+          if (received.key.participant?.includes('@lid') && received.key.participantAlt) {
+            (
+              received.key as {
+                previousParticipant?: string | null;
+              }
+            ).previousParticipant = received.key.participant;
+            received.key.participant = received.key.participantAlt;
+          }
+
           if (received.message?.conversation || received.message?.extendedTextMessage?.text) {
             const text = received.message?.conversation || received.message?.extendedTextMessage?.text;
 
@@ -1458,8 +1470,8 @@ export class BaileysStartupService extends ChannelStartupService {
       const readChatToUpdate: Record<string, true> = {}; // {remoteJid: true}
 
       for await (const { key, update } of args) {
-        if (key.remoteJid?.includes('@lid') && key.senderPn) {
-          key.remoteJid = key.senderPn;
+        if (key.remoteJid?.includes('@lid') && key.remoteJidAlt) {
+          key.remoteJid = key.remoteJidAlt;
         }
 
         const updateKey = `${this.instance.id}_${key.id}_${update.status}`;
@@ -1622,11 +1634,7 @@ export class BaileysStartupService extends ChannelStartupService {
       });
     },
 
-    'group-participants.update': (participantsUpdate: {
-      id: string;
-      participants: string[];
-      action: ParticipantAction;
-    }) => {
+    'group-participants.update': (participantsUpdate) => {
       this.sendDataWebhook(Events.GROUP_PARTICIPANTS_UPDATE, participantsUpdate);
 
       this.updateGroupMetadataCache(participantsUpdate.id);
@@ -2015,7 +2023,7 @@ export class BaileysStartupService extends ChannelStartupService {
       m.key = {
         id: id,
         remoteJid: sender,
-        participant: isJidUser(sender) || isLidUser(sender) ? sender : undefined,
+        participant: isPnUser(sender) || isLidUser(sender) ? sender : undefined,
         fromMe: true,
       };
       for (const [key, value] of Object.entries(m)) {
@@ -2201,7 +2209,7 @@ export class BaileysStartupService extends ChannelStartupService {
 
       const linkPreview = options?.linkPreview != false ? undefined : false;
 
-      let quoted: WAMessage;
+      let quoted: IWebMessageInfo | Quoted;
 
       if (options?.quoted) {
         const m = options?.quoted;
@@ -3564,7 +3572,7 @@ export class BaileysStartupService extends ChannelStartupService {
     try {
       const keys: proto.IMessageKey[] = [];
       data.readMessages.forEach((read) => {
-        if (isJidGroup(read.remoteJid) || isJidUser(read.remoteJid) || isLidUser(read.remoteJid)) {
+        if (isJidGroup(read.remoteJid) || isPnUser(read.remoteJid) || isLidUser(read.remoteJid)) {
           keys.push({
             remoteJid: read.remoteJid,
             fromMe: read.fromMe,
@@ -4437,13 +4445,13 @@ export class BaileysStartupService extends ChannelStartupService {
     throw new Error('Method not available in the Baileys service');
   }
 
-  private prepareMessage(message: proto.IWebMessageInfo): any {
+  private prepareMessage(message: any): any {
     const contentType = getContentType(message.message);
     const contentMsg = message?.message[contentType] as any;
 
     const messageRaw = {
       key: message.key,
-      pushName: message.pushName || message?.participant,
+      pushName: message.pushName || message?.participantAlt || message?.participant || '',
       status: status[message.status],
       message: { ...message.message },
       contextInfo: contentMsg?.contextInfo,
