@@ -4451,7 +4451,7 @@ export class BaileysStartupService extends ChannelStartupService {
     const contentMsg = message?.message[contentType] as any;
 
     if (message?.participantAlt){
-      message.participantAlt = jidNormalizedUser(message?.participantAlt);
+      message?.participantAlt = jidNormalizedUser(message?.participantAlt);
     }
 
     const messageRaw = {
