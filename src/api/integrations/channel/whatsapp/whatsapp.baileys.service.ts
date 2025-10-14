@@ -3753,7 +3753,7 @@ export class BaileysStartupService extends ChannelStartupService {
       const m = data?.message;
       const convertToMp4 = data?.convertToMp4 ?? false;
 
-      let msg = m?.message ? m : ((await this.getMessage(m.key, true)) as IWebMessageInfo);
+      let msg = m?.message ? m : ((await this.getMessage(m.key, true)) as proto.IWebMessageInfo);
 
       if (!msg) {
         throw 'Message not found';
@@ -3788,7 +3788,7 @@ export class BaileysStartupService extends ChannelStartupService {
 
       // console.log('trying to download media message...');
       const buffer = await downloadMediaMessage(
-        msg as WAMessage,
+        msg,
         'buffer',
         {},
         {
@@ -4618,7 +4618,7 @@ export class BaileysStartupService extends ChannelStartupService {
   }
 
   public async baileysAssertSessions(jids: string[], force: boolean) {
-    const response = await this.client.assertSessions(jids);
+    const response = await this.client.assertSessions(jids, force);
 
     return response;
   }
