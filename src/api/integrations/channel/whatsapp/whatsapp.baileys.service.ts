@@ -146,7 +146,6 @@ import { v4 } from 'uuid';
 
 import { useVoiceCallsBaileys } from './voiceCalls/useVoiceCallsBaileys';
 import IWebMessageInfo = proto.IWebMessageInfo;
-import {jidNormalizedUser} from "baileys/lib/WABinary/jid-utils";
 
 const groupMetadataCache = new CacheService(new CacheEngine(configService, 'groups').getEngine());
 
@@ -1145,7 +1144,7 @@ export class BaileysStartupService extends ChannelStartupService {
                 previousParticipant?: string | null;
               }
             ).previousParticipant = received.key.participant;
-            received.key.participant = jidNormalizedUser(received.key.participantAlt);
+            received.key.participant = received.key.participantAlt;
           }
 
           if (received.message?.conversation || received.message?.extendedTextMessage?.text) {
@@ -1472,7 +1471,7 @@ export class BaileysStartupService extends ChannelStartupService {
 
       for await (const { key, update } of args) {
         if (key.remoteJid?.includes('@lid') && key.remoteJidAlt) {
-          key.remoteJid =  jidNormalizedUser(key.remoteJidAlt);
+          key.remoteJid = key.remoteJidAlt;
         }
 
         const updateKey = `${this.instance.id}_${key.id}_${update.status}`;
@@ -4449,10 +4448,6 @@ export class BaileysStartupService extends ChannelStartupService {
   private prepareMessage(message: any): any {
     const contentType = getContentType(message.message);
     const contentMsg = message?.message[contentType] as any;
-
-    if (message?.participantAlt){
-      message?.participantAlt = jidNormalizedUser(message?.participantAlt);
-    }
 
     const messageRaw = {
       key: message.key,
