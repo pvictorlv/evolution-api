@@ -589,7 +589,10 @@ export class BaileysStartupService extends ChannelStartupService {
     let version;
     let log;
 
-    const latestWAversion = await fetchLatestBaileysVersion();
+    let latestWAversion = await fetchLatestWaWebVersion();
+    if (!latestWAversion.isLatest || latestWAversion.error) {
+      latestWAversion = await fetchLatestBaileysVersion();
+    }
     version = latestWAversion.version;
 
     log = `Baileys version: ${version}`;
