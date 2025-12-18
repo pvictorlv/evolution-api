@@ -1474,7 +1474,7 @@ export class BaileysStartupService extends ChannelStartupService {
 
         if (cached) {
           this.logger.info(`Message duplicated ignored [avoid deadlock]: ${updateKey}`);
-          continue;
+          //continue;
         }
 
         await this.baileysCache.set(updateKey, true, 30 * 60);
