@@ -100,13 +100,15 @@ import makeWASocket, {
   downloadMediaMessage,
   fetchLatestBaileysVersion,
   fetchLatestWaWebVersion,
-  generateWAMessageFromContent, getAggregateVotesInPollMessage,
+  generateWAMessageFromContent,
+  getAggregateVotesInPollMessage,
   getContentType,
   getDevice,
   GroupMetadata,
   isJidBroadcast,
   isJidGroup,
-  isJidNewsletter, isJidUser,
+  isJidNewsletter,
+  isJidUser,
   isLidUser,
   makeCacheableSignalKeyStore,
   MessageUpsertType,
@@ -1177,7 +1179,7 @@ export class BaileysStartupService extends ChannelStartupService {
             this.logger.info(`Message duplicated ignored: ${cacheId}`);
             //continue;
           }
-/*
+          /*
           if (
             received.messageStubParameters &&
             (received.messageStubParameters[0] === 'Message absent from node' ||
@@ -1214,6 +1216,7 @@ export class BaileysStartupService extends ChannelStartupService {
             !received.message?.contactMessage &&
             !received.message?.contactsArrayMessage &&
             !received.message?.locationMessage &&
+            !received.message?.protocolMessage?.editedMessage &&
             !received.message?.liveLocationMessage &&
             !received.message?.buttonsMessage &&
             !received.message?.templateMessage &&
@@ -1221,7 +1224,10 @@ export class BaileysStartupService extends ChannelStartupService {
             !received.message?.viewOnceMessage
           ) {
             console.log('protocolMessage or pollUpdateMessage or empty message, ignored', received);
-            console.log('peerDataOperationRequestResponseMessage', received.message?.protocolMessage?.peerDataOperationRequestResponseMessage);
+            console.log(
+              'peerDataOperationRequestResponseMessage',
+              received.message?.protocolMessage?.peerDataOperationRequestResponseMessage,
+            );
             continue;
           }
 
@@ -1633,7 +1639,7 @@ export class BaileysStartupService extends ChannelStartupService {
     },
   };
 
- /* private readonly labelHandle = {
+  /* private readonly labelHandle = {
     [Events.LABELS_EDIT]: async (label: Label) => {
       this.sendDataWebhook(Events.LABELS_EDIT, { ...label, instance: this.instance.name });
 
@@ -1826,7 +1832,7 @@ export class BaileysStartupService extends ChannelStartupService {
           const payload = events['contacts.update'];
           this.contactHandle['contacts.update'](payload);
         }
-/*
+        /*
         if (events[Events.LABELS_ASSOCIATION]) {
           const payload = events[Events.LABELS_ASSOCIATION];
           this.labelHandle[Events.LABELS_ASSOCIATION](payload, database);
@@ -3966,7 +3972,8 @@ export class BaileysStartupService extends ChannelStartupService {
       throw new InternalServerErrorException('Error updating profile picture', error.toString());
     }
   }
-/*
+
+  /*
   public async removeProfilePicture() {
     try {
       await this.client.removeProfilePicture(this.instance.wuid);
@@ -4066,7 +4073,7 @@ export class BaileysStartupService extends ChannelStartupService {
     }));
   }
 
-/*
+  /*
   public async handleLabel(data: HandleLabelDto) {
     const whatsappContact = await this.whatsappNumber({ numbers: [data.number] });
     if (whatsappContact.length === 0) {
@@ -4616,7 +4623,7 @@ export class BaileysStartupService extends ChannelStartupService {
   }
 
   public async baileysCreateParticipantNodes(jids: string[], message: proto.IMessage, extraAttrs: any) {
-   /* const response = await this.client.createParticipantNodes(jids, message, extraAttrs);
+    /* const response = await this.client.createParticipantNodes(jids, message, extraAttrs);
 
     const convertedResponse = {
       ...response,
