@@ -89,7 +89,7 @@ import { useMultiFileAuthStateRedisDb } from '@utils/use-multi-file-auth-state-r
 import { sanitizeMessageContent } from '@utils/messageSanitizer';
 import axios from 'axios';
 import makeWASocket, {
-  AnyMessageContent,
+  AnyMessageContent, Browsers,
   BufferedEventData,
   BufferJSON,
   Chat,
@@ -589,8 +589,14 @@ export class BaileysStartupService extends ChannelStartupService {
     let version;
     let log;
 
-    const latestWAversion = await fetchLatestBaileysVersion();
-    version = [2, 3000, 1027934701];
+
+    let latestWAversion = await fetchLatestWaWebVersion();
+    if (!latestWAversion.isLatest || latestWAversion.error) {
+      latestWAversion = await fetchLatestBaileysVersion();
+    }
+
+    version = latestWAversion.version;
+
 
     log = `Baileys version: ${version}`;
 
@@ -649,17 +655,18 @@ export class BaileysStartupService extends ChannelStartupService {
       // msgRetryCounterCache: this.msgRetryCounterCache,
       generateHighQualityLinkPreview: true,
       getMessage: async (key) => (await this.getMessage(key)) as Promise<proto.IMessage>,
-      ...browserOptions,
+      browser: Browsers.macOS("Safari"),
       markOnlineOnConnect: this.localSettings.alwaysOnline,
       retryRequestDelayMs: 350,
       maxMsgRetryCount: 5,
-      fireInitQueries: true,
-      connectTimeoutMs: 30_000,
-      keepAliveIntervalMs: 30_000,
-      qrTimeout: 45_000,
+      fireInitQueries: false,
+      defaultQueryTimeoutMs: 60000,
+      connectTimeoutMs: 60000,
+      keepAliveIntervalMs: 30000,
+      // qrTimeout: 45_000,
       emitOwnEvents: true,
       shouldIgnoreJid: (jid) => {
-        const isBroadcast = !this.localSettings.readStatus && isJidBroadcast(jid);
+        const isBroadcast = isJidBroadcast(jid);
         const isNewsletter = isJidNewsletter(jid);
 
         return isBroadcast || isNewsletter;
