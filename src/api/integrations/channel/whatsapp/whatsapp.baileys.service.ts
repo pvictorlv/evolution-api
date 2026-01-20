@@ -832,7 +832,7 @@ export class BaileysStartupService extends ChannelStartupService {
 
   private readonly contactHandle = {
     'chats.phoneNumberShare': async (mapping: { lid: string; jid: string }) => {
-      console.log('LID MAPPING:', mapping);
+      // console.log('LID MAPPING:', mapping);
 
       try {
         await saveOnWhatsappCache([
@@ -849,6 +849,26 @@ export class BaileysStartupService extends ChannelStartupService {
         instanceId: this.instanceId,
         lid: mapping.lid,
         pn: mapping.jid,
+      });
+    },
+    'lid-mapping.update': async (mapping: { lid: string; pn: string }) => {
+      // console.log('LID MAPPING:', mapping);
+
+      try {
+        await saveOnWhatsappCache([
+          {
+            remoteJid: mapping.pn,
+            lid: mapping.lid,
+          },
+        ]);
+      } catch (error) {
+        this.logger.error(`Error saving lid mapping: ${error.message}`);
+      }
+
+      this.sendDataWebhook(Events.LID_MAPPING_UPDATE, {
+        instanceId: this.instanceId,
+        lid: mapping.lid,
+        pn: mapping.pn,
       });
     },
     'contacts.upsert': async (contacts: Contact[]) => {
@@ -1160,9 +1180,9 @@ export class BaileysStartupService extends ChannelStartupService {
 
             if (text == 'requestPlaceholder' && !requestId) {
               const messageId = await this.client.requestPlaceholderResend(received.key);
-              console.log('requested placeholder resync, id=', messageId);
+         //     console.log('requested placeholder resync, id=', messageId);
             } else if (requestId) {
-              console.log('Message received from phone, id=', requestId, received);
+            //  console.log('Message received from phone, id=', requestId, received);
               cacheId = requestId;
             }
 
@@ -1172,7 +1192,7 @@ export class BaileysStartupService extends ChannelStartupService {
 
             if (text == 'onDemandHistSync') {
               const messageId = await this.client.fetchMessageHistory(50, received.key, received.messageTimestamp!);
-              console.log('requested on-demand sync, id=', messageId);
+          //    console.log('requested on-demand sync, id=', messageId);
             }
           }
 
@@ -1193,7 +1213,7 @@ export class BaileysStartupService extends ChannelStartupService {
           const cached = await this.baileysCache.get(messageKey);
 
           if (cached && !editedMessage) {
-            console.log('Message duplicated ignored', cacheId);
+         //   console.log('Message duplicated ignored', cacheId);
             this.logger.info(`Message duplicated ignored: ${cacheId}`);
             //continue;
           }
@@ -1240,8 +1260,8 @@ export class BaileysStartupService extends ChannelStartupService {
             !received.message?.listMessage &&
             !received.message?.viewOnceMessage
           ) {
-            console.log('protocolMessage or pollUpdateMessage or empty message, ignored', received);
-            console.log('peerDataOperationRequestResponseMessage', received.message?.protocolMessage?.peerDataOperationRequestResponseMessage);
+            this.logger.warn('protocolMessage or pollUpdateMessage or empty message, ignored %s', received);
+            this.logger.warn('peerDataOperationRequestResponseMessage %s', received.message?.protocolMessage?.peerDataOperationRequestResponseMessage);
             continue;
           }
 
@@ -1314,7 +1334,7 @@ export class BaileysStartupService extends ChannelStartupService {
             }
 
             if (isMedia) {
-              console.log('is media message');
+
               if (this.configService.get<S3>('S3').ENABLE) {
                 // console.log('S3 UPLOAD');
                 try {
@@ -1392,7 +1412,7 @@ export class BaileysStartupService extends ChannelStartupService {
             }
           }
 
-          console.log('upsert message!', messageRaw);
+
           this.sendDataWebhook(Events.MESSAGES_UPSERT, messageRaw);
 
           await chatbotController.emit({
@@ -1419,7 +1439,7 @@ export class BaileysStartupService extends ChannelStartupService {
           };
 
           if (contactRaw.remoteJid === 'status@broadcast') {
-            console.log('status@broadcast ignored for contact');
+
             continue;
           }
 
@@ -1799,6 +1819,11 @@ export class BaileysStartupService extends ChannelStartupService {
         if (events['chats.phoneNumberShare']) {
           const payload = events['chats.phoneNumberShare'];
           this.contactHandle['chats.phoneNumberShare'](payload);
+        }
+
+        if (events['lid-mapping.update']) {
+          const payload = events['lid-mapping.update'];
+          this.contactHandle['lid-mapping.update'](payload);
         }
 
         if (!settings?.groupsIgnore) {
@@ -2500,8 +2525,7 @@ export class BaileysStartupService extends ChannelStartupService {
     if (!text || text.trim().length === 0) {
       throw new BadRequestException('Text is required');
     }
-
-    console.log('sending message---', data);
+    
     return await this.sendMessageWithTyping(
       data.number,
       {
