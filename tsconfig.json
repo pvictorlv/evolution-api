@@ -3,8 +3,9 @@
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true,
     "declaration": true,
-    "target": "es2020",
-    "module": "CommonJS",
+    "target": "ES2022",
+    "useDefineForClassFields": false,
+    "module": "Preserve",
     "rootDir": "./",
     "resolveJsonModule": true,
     "removeComments": true,
@@ -28,7 +29,7 @@
       "@utils/*": ["./src/utils/*"],
       "@validate/*": ["./src/validate/*"]
     },
-    "moduleResolution": "Node"
+    "moduleResolution": "Bundler"
   },
   "exclude": ["node_modules", "./test", "./dist", "./prisma"],
   "include": [
