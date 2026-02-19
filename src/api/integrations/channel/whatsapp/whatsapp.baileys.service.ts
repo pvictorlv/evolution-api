@@ -146,7 +146,7 @@ import { v4 } from 'uuid';
 
 import { useVoiceCallsBaileys } from './voiceCalls/useVoiceCallsBaileys';
 import IWebMessageInfo = proto.IWebMessageInfo;
-import {jidNormalizedUser} from "baileys/lib/WABinary/jid-utils";
+import {jidNormalizedUser} from "baileys/lib/WABinary/jid-utils.js";
 
 const groupMetadataCache = new CacheService(new CacheEngine(configService, 'groups').getEngine());
 
