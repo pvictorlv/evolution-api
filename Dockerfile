@@ -18,7 +18,7 @@ COPY ./public ./public
 COPY ./prisma ./prisma
 COPY ./manager ./manager
 COPY ./.env.example ./.env
-COPY ./runWithProvider.cjs ./
+COPY ./runWithProvider.js ./
 COPY ./tsup.config.ts ./
 
 COPY ./Docker ./Docker
@@ -48,7 +48,7 @@ COPY --from=builder /evolution/manager ./manager
 COPY --from=builder /evolution/public ./public
 COPY --from=builder /evolution/.env ./.env
 COPY --from=builder /evolution/Docker ./Docker
-COPY --from=builder /evolution/runWithProvider.cjs ./runWithProvider.cjs
+COPY --from=builder /evolution/runWithProvider.js ./runWithProvider.js
 COPY --from=builder /evolution/tsup.config.ts ./tsup.config.ts
 
 ENV DOCKER_ENV=true
