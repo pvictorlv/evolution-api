@@ -433,7 +433,7 @@ export class InstanceController {
       this.eventEmitter.emit('remove.instance', instanceName, 'inner');
       return { status: 'SUCCESS', error: false, response: { message: 'Instance deleted' } };
     } catch (error) {
-      throw new BadRequestException(error.toString());
+      return { status: 'ERROR', error: true, response: { message: error.toString() } };
     }
   }
 }
