@@ -1061,7 +1061,7 @@ export class BaileysStartupService extends ChannelStartupService {
         const messagesRaw: any[] = [];
 
         for (const m of messages) {
-          if ( !m.key || !m.messageTimestamp) {
+          if (!m.key || !m.messageTimestamp) {
             console.log('Invalid message format, skipping:', m);
             continue;
           }
@@ -3369,7 +3369,7 @@ export class BaileysStartupService extends ChannelStartupService {
       users: { number: string; jid: string; name?: string }[];
     } = { groups: [], broadcast: [], users: [] };
 
-    console.log('data.numbers', data.numbers);
+    // console.log('data.numbers', data.numbers);
     data.numbers.forEach((number) => {
       const jid = createJid(number);
 
@@ -3401,15 +3401,15 @@ export class BaileysStartupService extends ChannelStartupService {
     );
     onWhatsapp.push(...groups);
 
-    console.log('onWhatsapp', onWhatsapp);
-    console.log('jids', jids);
+    // console.log('onWhatsapp', onWhatsapp);
+    // console.log('jids', jids);
 
     // USERS
     const contacts: any[] = await this.prismaRepository.contact.findMany({
       where: { instanceId: this.instanceId, remoteJid: { in: jids.users.map(({ jid }) => jid) } },
     });
 
-    console.log('contacts', contacts);
+    // console.log('contacts', contacts);
 
     // Separate @lid numbers from normal numbers
     const lidUsers = jids.users.filter(({ jid }) => jid.includes('@lid'));
@@ -3418,20 +3418,20 @@ export class BaileysStartupService extends ChannelStartupService {
     // For normal numbers, use traditional Baileys verification
     let normalVerifiedUsers: OnWhatsAppDto[] = [];
     if (normalUsers.length > 0) {
-      console.log('normalUsers', normalUsers);
+      // console.log('normalUsers', normalUsers);
       const numbersToVerify = normalUsers.map(({ jid }) => jid.replace('+', ''));
-      console.log('numbersToVerify', numbersToVerify);
+      // console.log('numbersToVerify', numbersToVerify);
 
       const cachedNumbers = await getOnWhatsappCache(numbersToVerify);
-      console.log('cachedNumbers', cachedNumbers);
+      // console.log('cachedNumbers', cachedNumbers);
 
       const filteredNumbers = numbersToVerify.filter(
         (jid) => !cachedNumbers.some((cached) => cached.jidOptions.includes(jid)),
       );
-      console.log('filteredNumbers', filteredNumbers);
+      // console.log('filteredNumbers', filteredNumbers);
 
       const verify = await this.client.onWhatsApp(...filteredNumbers);
-      console.log('verify', verify);
+      // console.log('verify', verify);
       normalVerifiedUsers = await Promise.all(
         normalUsers.map(async (user) => {
           let numberVerified: any = null;
@@ -4612,7 +4612,7 @@ export class BaileysStartupService extends ChannelStartupService {
   }
 
   public async baileysSendNode(stanza: any) {
-    console.log('stanza', JSON.stringify(stanza));
+    // console.log('stanza', JSON.stringify(stanza));
     const response = await this.client.sendNode(stanza);
 
     return response;
