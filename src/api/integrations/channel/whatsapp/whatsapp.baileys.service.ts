@@ -662,7 +662,7 @@ export class BaileysStartupService extends ChannelStartupService {
       fireInitQueries: false,
       defaultQueryTimeoutMs: 60000,
       connectTimeoutMs: 60000,
-      keepAliveIntervalMs: 30000,
+      keepAliveIntervalMs: 60_000,
       // qrTimeout: 45_000,
       emitOwnEvents: true,
       shouldIgnoreJid: (jid) => {
@@ -672,9 +672,7 @@ export class BaileysStartupService extends ChannelStartupService {
         return isBroadcast || isNewsletter;
       },
       syncFullHistory: true,
-      shouldSyncHistoryMessage: (msg: proto.Message.IHistorySyncNotification) => {
-        return this.historySyncNotification(msg);
-      },
+      shouldSyncHistoryMessage: true,
       cachedGroupMetadata: this.getGroupMetadataCache,
       // userDevicesCache: this.userDevicesCache,
       transactionOpts: {
@@ -1026,25 +1024,6 @@ export class BaileysStartupService extends ChannelStartupService {
           `recv ${chats.length} chats, ${contacts.length} contacts, ${messages.length} msgs (is latest: ${isLatest}, progress: ${progress}%), type: ${syncType}`,
         );
 
-        const instance: InstanceDto = { instanceName: this.instance.name };
-
-        let timestampLimitToImport = null;
-
-        if (this.configService.get<Chatwoot>('CHATWOOT').ENABLED) {
-          const daysLimitToImport = this.localChatwoot?.enabled ? this.localChatwoot.daysLimitImportMessages : 1000;
-
-          const date = new Date();
-          timestampLimitToImport = new Date(date.setDate(date.getDate() - daysLimitToImport)).getTime() / 1000;
-
-          const maxBatchTimestamp = Math.max(...messages.map((message) => message.messageTimestamp as number));
-
-          const processBatch = maxBatchTimestamp >= timestampLimitToImport;
-
-          if (!processBatch) {
-            return;
-          }
-        }
-
         const chatsRaw: { remoteJid: string; instanceId: string; name?: string }[] = [];
         const chatsRepository = new Set(
           (
@@ -1094,11 +1073,6 @@ export class BaileysStartupService extends ChannelStartupService {
             m.messageTimestamp = m.messageTimestamp?.toNumber();
           }
 
-          if (this.configService.get<Chatwoot>('CHATWOOT').ENABLED) {
-            if (m.messageTimestamp <= timestampLimitToImport) {
-              continue;
-            }
-          }
 
           messagesRaw.push(this.prepareMessage(m));
         }
@@ -1114,18 +1088,6 @@ export class BaileysStartupService extends ChannelStartupService {
           } catch (error) {
             this.logger.error('Error on historic batch insert: ' + error.toString());
           }
-        }
-
-        if (
-          this.configService.get<Chatwoot>('CHATWOOT').ENABLED &&
-          this.localChatwoot?.enabled &&
-          this.localChatwoot.importMessages &&
-          messagesRaw.length > 0
-        ) {
-          this.chatwootService.addHistoryMessages(
-            instance,
-            messagesRaw.filter((msg) => !chatwootImport.isIgnorePhoneNumber(msg.key?.remoteJid)),
-          );
         }
 
         await this.contactHandle['contacts.upsert'](
@@ -1883,35 +1845,6 @@ export class BaileysStartupService extends ChannelStartupService {
     });
   }
 
-  private historySyncNotification(msg: proto.Message.IHistorySyncNotification) {
-    const instance: InstanceDto = { instanceName: this.instance.name };
-
-    if (
-      this.configService.get<Chatwoot>('CHATWOOT').ENABLED &&
-      this.localChatwoot?.enabled &&
-      this.localChatwoot.importMessages &&
-      this.isSyncNotificationFromUsedSyncType(msg)
-    ) {
-      if (msg.chunkOrder === 1) {
-        this.chatwootService.startImportHistoryMessages(instance);
-      }
-
-      if (msg.progress === 100) {
-        setTimeout(() => {
-          this.chatwootService.importHistoryMessages(instance);
-        }, 10000);
-      }
-    }
-
-    return true;
-  }
-
-  private isSyncNotificationFromUsedSyncType(msg: proto.Message.IHistorySyncNotification) {
-    return (
-      (this.localSettings.syncFullHistory && msg?.syncType === 2) ||
-      (!this.localSettings.syncFullHistory && msg?.syncType === 3)
-    );
-  }
 
   public async profilePicture(number: string) {
     const jid = createJid(number);

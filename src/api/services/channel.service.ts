@@ -151,7 +151,7 @@ export class ChannelStartupService {
     this.localSettings.alwaysOnline = data?.alwaysOnline;
     this.localSettings.readMessages = data?.readMessages;
     this.localSettings.readStatus = data?.readStatus;
-    this.localSettings.syncFullHistory = data?.syncFullHistory;
+    this.localSettings.syncFullHistory = true;
     this.localSettings.wavoipToken = data?.wavoipToken;
   }
 
@@ -167,7 +167,7 @@ export class ChannelStartupService {
         alwaysOnline: data.alwaysOnline,
         readMessages: data.readMessages,
         readStatus: data.readStatus,
-        syncFullHistory: data.syncFullHistory,
+        syncFullHistory: true,
         wavoipToken: data.wavoipToken,
       },
       create: {
@@ -177,7 +177,7 @@ export class ChannelStartupService {
         alwaysOnline: data.alwaysOnline,
         readMessages: data.readMessages,
         readStatus: data.readStatus,
-        syncFullHistory: data.syncFullHistory,
+        syncFullHistory: true,
         wavoipToken: data.wavoipToken,
         instanceId: this.instanceId,
       },
