@@ -17,13 +17,13 @@ export class InstanceRouter extends RouterBroker {
       .post('/create', ...guards, async (req, res) => {
         console.log('create instance', req.body);
         // delete if exist to avoid duplicates, this is needed because of the way the provider works, it creates a new instance with the same id every time it starts
-       try {
+       /*try {
          await instanceController.deleteInstance({
            instanceName: req.body.instanceName,
          })
        } catch (error) {
             console.log('instance not found, creating new one');
-       }
+       }*/
         const response = await this.dataValidate<InstanceDto>({
           request: req,
           schema: instanceSchema,
