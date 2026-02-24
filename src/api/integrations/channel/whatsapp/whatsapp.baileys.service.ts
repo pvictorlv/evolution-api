@@ -1061,7 +1061,8 @@ export class BaileysStartupService extends ChannelStartupService {
         const messagesRaw: any[] = [];
 
         for (const m of messages) {
-          if (!m.message || !m.key || !m.messageTimestamp) {
+          if ( !m.key || !m.messageTimestamp) {
+            console.log('Invalid message format, skipping:', m);
             continue;
           }
 
@@ -1154,7 +1155,7 @@ export class BaileysStartupService extends ChannelStartupService {
 
             if (text == 'onDemandHistSync') {
               const messageId = await this.client.fetchMessageHistory(50, received.key, received.messageTimestamp!);
-          //    console.log('requested on-demand sync, id=', messageId);
+              console.log('requested on-demand sync, id=', messageId);
             }
           }
 
