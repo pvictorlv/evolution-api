@@ -672,7 +672,7 @@ export class BaileysStartupService extends ChannelStartupService {
         return isBroadcast || isNewsletter;
       },
       syncFullHistory: true,
-      shouldSyncHistoryMessage: true,
+      shouldSyncHistoryMessage: () => true,
       cachedGroupMetadata: this.getGroupMetadataCache,
       // userDevicesCache: this.userDevicesCache,
       transactionOpts: {
