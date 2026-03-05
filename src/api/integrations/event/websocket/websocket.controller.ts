@@ -24,7 +24,7 @@ export class WebsocketController extends EventController implements EventControl
     }
 
     this.socket = new SocketIO(httpServer, {
-      maxHttpBufferSize: 1e8, // 100MB
+      maxHttpBufferSize: 1e9, // 1 GB
       cors: {
         origin: this.cors,
       },
