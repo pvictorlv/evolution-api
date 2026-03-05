@@ -24,6 +24,7 @@ export class WebsocketController extends EventController implements EventControl
     }
 
     this.socket = new SocketIO(httpServer, {
+      maxHttpBufferSize: 1e8, // 100MB
       cors: {
         origin: this.cors,
       },
@@ -78,10 +79,12 @@ export class WebsocketController extends EventController implements EventControl
     integration,
   }: EmitData): Promise<void> {
     if (integration && !integration.includes('websocket')) {
+      console.warn('Websocket integration is disabled. Enable it in the configuration to use this feature.');
       return;
     }
 
     if (!this.status) {
+      console.warn('Websocket integration is disabled. Enable it in the configuration to use this feature.');
       return;
     }
 
@@ -112,6 +115,7 @@ export class WebsocketController extends EventController implements EventControl
       const instance = await this.get(instanceName);
 
       if (!instance?.enabled) {
+        console.warn(`Instance ${instanceName} is disabled. Enable it to receive websocket events.`);
         return;
       }
 

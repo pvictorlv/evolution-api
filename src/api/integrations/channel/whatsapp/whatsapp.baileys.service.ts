@@ -1078,7 +1078,24 @@ export class BaileysStartupService extends ChannelStartupService {
           messagesRaw.push(this.prepareMessage(m));
         }
 
-        this.sendDataWebhook(Events.MESSAGES_SET, [...messagesRaw]);
+        // chunk messages to avoid payload too large
+        let messageChunks = [];
+        const chunkSize = 256;
+
+        for (let i = 0; i < messagesRaw.length; i += chunkSize) {
+            messageChunks.push(messagesRaw.slice(i, i + chunkSize));
+        }
+
+        await Promise.allSettled(
+            messageChunks.map((chunk) => this.sendDataWebhook(Events.MESSAGES_SET, chunk))
+        );
+        
+        //
+        // for (const chunk of messageChunks) {
+        //   this.sendDataWebhook(Events.MESSAGES_SET, chunk);
+        // }
+
+        //this.sendDataWebhook(Events.MESSAGES_SET, [...messagesRaw]);
 
         if (this.configService.get<Database>('DATABASE').SAVE_DATA.HISTORIC) {
           try {
