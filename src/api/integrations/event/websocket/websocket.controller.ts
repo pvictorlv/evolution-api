@@ -101,6 +101,9 @@ export class WebsocketController extends EventController implements EventControl
     };
 
     if (configService.get<Websocket>('WEBSOCKET')?.GLOBAL_EVENTS) {
+      if (event == 'messages.set'){
+        console.log('Emitting global event:', message);
+      }
       this.socket.emit(event, message);
 
       if (logEnabled) {
