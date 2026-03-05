@@ -4462,7 +4462,7 @@ export class BaileysStartupService extends ChannelStartupService {
         return message;
       }
 
-      const contentType = getContentType(message.message);
+      const contentType = getContentType(message.message) || message.messageType;
       const contentMsg = message?.message[contentType] as any;
 
       if (message?.participantAlt) {
