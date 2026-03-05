@@ -4432,57 +4432,69 @@ export class BaileysStartupService extends ChannelStartupService {
   }
 
   private prepareMessage(message: any): any {
-    const contentType = getContentType(message.message);
-    const contentMsg = message?.message[contentType] as any;
-
-    if (message?.participantAlt){
-      message.participantAlt = jidNormalizedUser(message?.participantAlt);
-    }
-
-    const messageRaw = {
-      key: message.key,
-      pushName: message.pushName || message?.participantAlt || message?.participant || '',
-      status: status[message.status],
-      message: { ...message.message },
-      contextInfo: contentMsg?.contextInfo,
-      messageType: contentType || 'unknown',
-      messageTimestamp: Long.isLong(message.messageTimestamp)
-        ? (message.messageTimestamp as Long).toNumber()
-        : (message.messageTimestamp as number),
-      instanceId: this.instanceId,
-      source: getDevice(message.key.id),
-    };
-
-    if (!messageRaw.status && message.key.fromMe === false) {
-      messageRaw.status = status[3]; // DELIVERED MESSAGE
-    }
-
-    if (messageRaw.message.extendedTextMessage) {
-      messageRaw.messageType = 'conversation';
-      messageRaw.message.conversation = messageRaw.message.extendedTextMessage.text;
-      delete messageRaw.message.extendedTextMessage;
-    }
-
-    if (messageRaw.message.documentWithCaptionMessage) {
-      messageRaw.messageType = 'documentMessage';
-      messageRaw.message.documentMessage = messageRaw.message.documentWithCaptionMessage.message.documentMessage;
-      delete messageRaw.message.documentWithCaptionMessage;
-    }
-
-    const quotedMessage = messageRaw?.contextInfo?.quotedMessage;
-    if (quotedMessage) {
-      if (quotedMessage.extendedTextMessage) {
-        quotedMessage.conversation = quotedMessage.extendedTextMessage.text;
-        delete quotedMessage.extendedTextMessage;
+    try {
+      if (!message){
+        console.error('Message is undefined or null');
+        return message;
       }
 
-      if (quotedMessage.documentWithCaptionMessage) {
-        quotedMessage.documentMessage = quotedMessage.documentWithCaptionMessage.message.documentMessage;
-        delete quotedMessage.documentWithCaptionMessage;
-      }
-    }
+      const contentType = getContentType(message.message);
+      const contentMsg = message?.message[contentType] as any;
 
-    return messageRaw;
+      if (message?.participantAlt) {
+        message.participantAlt = jidNormalizedUser(message?.participantAlt);
+      }
+
+      if (!message.key && message.message?.key) {
+        message.key = message.message.key;
+      }
+      const messageRaw = {
+        key: message.key,
+        pushName: message.pushName || message?.participantAlt || message?.participant || '',
+        status: status[message.status],
+        message: {...message.message},
+        contextInfo: contentMsg?.contextInfo,
+        messageType: contentType || 'unknown',
+        messageTimestamp: Long.isLong(message.messageTimestamp)
+            ? (message.messageTimestamp as Long).toNumber()
+            : (message.messageTimestamp as number),
+        instanceId: this.instanceId,
+        source: getDevice(message.key.id),
+      };
+
+      if (!messageRaw.status && message.key.fromMe === false) {
+        messageRaw.status = status[3]; // DELIVERED MESSAGE
+      }
+
+      if (messageRaw.message.extendedTextMessage) {
+        messageRaw.messageType = 'conversation';
+        messageRaw.message.conversation = messageRaw.message.extendedTextMessage.text;
+        delete messageRaw.message.extendedTextMessage;
+      }
+
+      if (messageRaw.message.documentWithCaptionMessage) {
+        messageRaw.messageType = 'documentMessage';
+        messageRaw.message.documentMessage = messageRaw.message.documentWithCaptionMessage.message.documentMessage;
+        delete messageRaw.message.documentWithCaptionMessage;
+      }
+
+      const quotedMessage = messageRaw?.contextInfo?.quotedMessage;
+      if (quotedMessage) {
+        if (quotedMessage.extendedTextMessage) {
+          quotedMessage.conversation = quotedMessage.extendedTextMessage.text;
+          delete quotedMessage.extendedTextMessage;
+        }
+
+        if (quotedMessage.documentWithCaptionMessage) {
+          quotedMessage.documentMessage = quotedMessage.documentWithCaptionMessage.message.documentMessage;
+          delete quotedMessage.documentWithCaptionMessage;
+        }
+      }
+
+      return messageRaw;
+    } catch (error) {
+      return message;
+    }
   }
 
   private async syncChatwootLostMessages() {
