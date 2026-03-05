@@ -4463,7 +4463,7 @@ export class BaileysStartupService extends ChannelStartupService {
       }
 
       const contentType = getContentType(message.message) || message.messageType;
-      const contentMsg = message?.message[contentType] as any;
+      const contentMsg = message?.message?.[contentType] as any;
 
       if (message?.participantAlt) {
         message.participantAlt = jidNormalizedUser(message?.participantAlt);
