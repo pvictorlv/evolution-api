@@ -388,12 +388,20 @@ export class BaileysStartupService extends ChannelStartupService {
         ),
       );
 
-      await this.prismaRepository.instance.update({
-        where: { id: this.instanceId },
-        data: {
-          connectionStatus: 'connecting',
-        },
-      });
+      await this.prismaRepository.instance
+        .update({
+          where: { id: this.instanceId },
+          data: {
+            connectionStatus: 'connecting',
+          },
+        })
+        .catch((error) => {
+          if (error?.code === 'P2025') {
+            this.logger.warn('Instance record not found for connectionStatus update (connecting)');
+            return;
+          }
+          throw error;
+        });
     }
 
     if (connection) {
@@ -418,15 +426,23 @@ export class BaileysStartupService extends ChannelStartupService {
           disconnectionObject: JSON.stringify(lastDisconnect),
         });
 
-        await this.prismaRepository.instance.update({
-          where: { id: this.instanceId },
-          data: {
-            connectionStatus: 'close',
-            disconnectionAt: new Date(),
-            disconnectionReasonCode: statusCode,
-            disconnectionObject: JSON.stringify(lastDisconnect),
-          },
-        });
+        await this.prismaRepository.instance
+          .update({
+            where: { id: this.instanceId },
+            data: {
+              connectionStatus: 'close',
+              disconnectionAt: new Date(),
+              disconnectionReasonCode: statusCode,
+              disconnectionObject: JSON.stringify(lastDisconnect),
+            },
+          })
+          .catch((error) => {
+            if (error?.code === 'P2025') {
+              this.logger.warn('Instance record not found for connectionStatus update (close)');
+              return;
+            }
+            throw error;
+          });
 
         if (this.configService.get<Chatwoot>('CHATWOOT').ENABLED && this.localChatwoot?.enabled) {
           this.chatwootService.eventWhatsapp(
@@ -473,15 +489,23 @@ export class BaileysStartupService extends ChannelStartupService {
       `,
       );
 
-      await this.prismaRepository.instance.update({
-        where: { id: this.instanceId },
-        data: {
-          ownerJid: this.instance.wuid,
-          profileName: (await this.getProfileName()) as string,
-          profilePicUrl: this.instance.profilePictureUrl,
-          connectionStatus: 'open',
-        },
-      });
+      await this.prismaRepository.instance
+        .update({
+          where: { id: this.instanceId },
+          data: {
+            ownerJid: this.instance.wuid,
+            profileName: (await this.getProfileName()) as string,
+            profilePicUrl: this.instance.profilePictureUrl,
+            connectionStatus: 'open',
+          },
+        })
+        .catch((error) => {
+          if (error?.code === 'P2025') {
+            this.logger.warn('Instance record not found for connectionStatus update (open)');
+            return;
+          }
+          throw error;
+        });
 
       if (this.configService.get<Chatwoot>('CHATWOOT').ENABLED && this.localChatwoot?.enabled) {
         this.chatwootService.eventWhatsapp(
@@ -4493,6 +4517,7 @@ export class BaileysStartupService extends ChannelStartupService {
 
       return messageRaw;
     } catch (error) {
+      console.trace('Error preparing message:', error);
       return message;
     }
   }
