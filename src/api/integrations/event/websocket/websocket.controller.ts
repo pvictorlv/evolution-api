@@ -115,7 +115,6 @@ export class WebsocketController extends EventController implements EventControl
       const instance = await this.get(instanceName);
 
       if (!instance?.enabled) {
-        console.warn(`Instance ${instanceName} is disabled. Enable it to receive websocket events.`);
         return;
       }
 
