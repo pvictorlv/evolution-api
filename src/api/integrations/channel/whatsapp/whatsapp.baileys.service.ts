@@ -1105,7 +1105,7 @@ export class BaileysStartupService extends ChannelStartupService {
         // chunk messages to avoid payload too large
         let messageChunks = [];
         console.log('Total messages to sync:', messagesRaw.length);
-        const chunkSize = 512;
+        const chunkSize = 1024; // Adjust chunk size as needed
 
         for (let i = 0; i < messagesRaw.length; i += chunkSize) {
             messageChunks.push(messagesRaw.slice(i, i + chunkSize));
