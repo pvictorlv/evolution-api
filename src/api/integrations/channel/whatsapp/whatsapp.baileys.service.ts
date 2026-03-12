@@ -235,7 +235,7 @@ export class BaileysStartupService extends ChannelStartupService {
   private connectingTimeout: ReturnType<typeof setTimeout> | null = null;
   private reconnectAttempts = 0;
   private readonly MAX_RECONNECT_ATTEMPTS = 10;
-  private readonly CONNECTING_TIMEOUT_MS = 120_000; // 2 minutes
+  private readonly CONNECTING_TIMEOUT_MS = 300_000; // 5 minutes
 
   public stateConnection: wa.StateConnection = { state: 'close' };
 
@@ -300,8 +300,23 @@ export class BaileysStartupService extends ChannelStartupService {
     this.clearConnectingTimeout();
     this.connectingTimeout = setTimeout(async () => {
       if (this.stateConnection.state === 'connecting') {
+        this.reconnectAttempts++;
+
+        if (this.reconnectAttempts > this.MAX_RECONNECT_ATTEMPTS) {
+          this.logger.error(
+            `Instance ${this.instanceName} stuck in "connecting" and exceeded max reconnect attempts (${this.MAX_RECONNECT_ATTEMPTS}). Stopping.`,
+          );
+          this.sendDataWebhook(Events.CONNECTION_UPDATE, {
+            instance: this.instance.name,
+            state: 'close',
+            statusReason: DisconnectReason.connectionLost,
+          });
+          this.cleanupClient();
+          return;
+        }
+
         this.logger.warn(
-          `Instance ${this.instanceName} stuck in "connecting" for ${this.CONNECTING_TIMEOUT_MS / 1000}s, forcing reconnection`,
+          `Instance ${this.instanceName} stuck in "connecting" for ${this.CONNECTING_TIMEOUT_MS / 1000}s, forcing reconnection (attempt ${this.reconnectAttempts}/${this.MAX_RECONNECT_ATTEMPTS})`,
         );
         this.cleanupClient();
         try {
@@ -314,13 +329,13 @@ export class BaileysStartupService extends ChannelStartupService {
   }
 
   public async logoutInstance() {
-    this.cleanupClient();
-
     try {
       await this.client?.logout('Log out instance: ' + this.instanceName);
     } catch (error) {
       this.logger.warn('Error during logout: ' + error);
     }
+
+    this.cleanupClient();
 
     const sessionExists = await this.prismaRepository.session.findFirst({
       where: { sessionId: this.instanceId },
