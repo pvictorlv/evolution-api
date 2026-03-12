@@ -232,6 +232,11 @@ export class BaileysStartupService extends ChannelStartupService {
   private endSession = false;
   private logBaileys = this.configService.get<Log>('LOG').BAILEYS;
 
+  private connectingTimeout: ReturnType<typeof setTimeout> | null = null;
+  private reconnectAttempts = 0;
+  private readonly MAX_RECONNECT_ATTEMPTS = 10;
+  private readonly CONNECTING_TIMEOUT_MS = 120_000; // 2 minutes
+
   public stateConnection: wa.StateConnection = { state: 'close' };
 
   public phoneNumber: string;
@@ -240,10 +245,82 @@ export class BaileysStartupService extends ChannelStartupService {
     return this.stateConnection;
   }
 
-  public async logoutInstance() {
-    await this.client?.logout('Log out instance: ' + this.instanceName);
+  private cleanupClient() {
+    if (!this.client) return;
 
-    this.client?.ws?.close();
+    this.endSession = true;
+    this.clearConnectingTimeout();
+
+    try {
+      this.client.ev.removeAllListeners('connection.update');
+      this.client.ev.removeAllListeners('creds.update');
+      this.client.ev.removeAllListeners('messaging-history.set');
+      this.client.ev.removeAllListeners('messages.upsert');
+      this.client.ev.removeAllListeners('messages.update');
+      this.client.ev.removeAllListeners('message-receipt.update');
+      this.client.ev.removeAllListeners('groups.upsert');
+      this.client.ev.removeAllListeners('groups.update');
+      this.client.ev.removeAllListeners('group-participants.update');
+      this.client.ev.removeAllListeners('chats.upsert');
+      this.client.ev.removeAllListeners('chats.update');
+      this.client.ev.removeAllListeners('chats.delete');
+      this.client.ev.removeAllListeners('contacts.upsert');
+      this.client.ev.removeAllListeners('contacts.update');
+      this.client.ev.removeAllListeners('presence.update');
+      this.client.ev.removeAllListeners('labels.edit');
+      this.client.ev.removeAllListeners('labels.association');
+      this.client.ev.removeAllListeners('call');
+    } catch (error) {
+      this.logger.warn('Error removing event listeners: ' + error);
+    }
+
+    try {
+      this.client.ws?.removeAllListeners();
+    } catch (error) {
+      this.logger.warn('Error removing ws listeners: ' + error);
+    }
+
+    try {
+      this.client.end(new Error('Cleanup before reconnection'));
+    } catch (error) {
+      this.logger.warn('Error ending client: ' + error);
+    }
+
+    this.logger.info('Client cleaned up for instance: ' + this.instanceName);
+  }
+
+  private clearConnectingTimeout() {
+    if (this.connectingTimeout) {
+      clearTimeout(this.connectingTimeout);
+      this.connectingTimeout = null;
+    }
+  }
+
+  private startConnectingTimeout() {
+    this.clearConnectingTimeout();
+    this.connectingTimeout = setTimeout(async () => {
+      if (this.stateConnection.state === 'connecting') {
+        this.logger.warn(
+          `Instance ${this.instanceName} stuck in "connecting" for ${this.CONNECTING_TIMEOUT_MS / 1000}s, forcing reconnection`,
+        );
+        this.cleanupClient();
+        try {
+          await this.connectToWhatsapp(this.phoneNumber);
+        } catch (error) {
+          this.logger.error('Failed to reconnect after connecting timeout: ' + error);
+        }
+      }
+    }, this.CONNECTING_TIMEOUT_MS);
+  }
+
+  public async logoutInstance() {
+    this.cleanupClient();
+
+    try {
+      await this.client?.logout('Log out instance: ' + this.instanceName);
+    } catch (error) {
+      this.logger.warn('Error during logout: ' + error);
+    }
 
     const sessionExists = await this.prismaRepository.session.findFirst({
       where: { sessionId: this.instanceId },
@@ -412,10 +489,32 @@ export class BaileysStartupService extends ChannelStartupService {
     }
 
     if (connection === 'close') {
+      this.clearConnectingTimeout();
       const statusCode = (lastDisconnect?.error as Boom)?.output?.statusCode;
       const codesToNotReconnect = [DisconnectReason.loggedOut, 402, 406];
       const shouldReconnect = !codesToNotReconnect.includes(statusCode);
       if (shouldReconnect) {
+        this.reconnectAttempts++;
+        const backoffMs = Math.min(1000 * Math.pow(2, this.reconnectAttempts - 1), 60_000);
+        this.logger.info(
+          `Reconnecting instance ${this.instanceName} (attempt ${this.reconnectAttempts}/${this.MAX_RECONNECT_ATTEMPTS}) in ${backoffMs}ms...`,
+        );
+
+        if (this.reconnectAttempts > this.MAX_RECONNECT_ATTEMPTS) {
+          this.logger.error(
+            `Instance ${this.instanceName} exceeded max reconnect attempts (${this.MAX_RECONNECT_ATTEMPTS}). Stopping.`,
+          );
+          this.sendDataWebhook(Events.CONNECTION_UPDATE, {
+            instance: this.instance.name,
+            state: 'close',
+            statusReason: DisconnectReason.connectionLost,
+          });
+          this.cleanupClient();
+          return;
+        }
+
+        this.cleanupClient();
+        await delay(backoffMs);
         await this.connectToWhatsapp(this.phoneNumber);
       } else {
         this.sendDataWebhook(Events.STATUS_INSTANCE, {
@@ -456,8 +555,7 @@ export class BaileysStartupService extends ChannelStartupService {
         }
 
         this.eventEmitter.emit('logout.instance', this.instance.name, 'inner');
-        this.client?.ws?.close();
-        this.client.end(new Error('Close connection'));
+        this.cleanupClient();
 
         this.sendDataWebhook(Events.CONNECTION_UPDATE, {
           instance: this.instance.name,
@@ -467,6 +565,8 @@ export class BaileysStartupService extends ChannelStartupService {
     }
 
     if (connection === 'open') {
+      this.clearConnectingTimeout();
+      this.reconnectAttempts = 0;
       this.instance.wuid = this.client.user.id.replace(/:\d+/, '');
       try {
         const profilePic = await this.profilePicture(this.instance.wuid);
@@ -529,6 +629,7 @@ export class BaileysStartupService extends ChannelStartupService {
     }
 
     if (connection === 'connecting') {
+      this.startConnectingTimeout();
       this.sendDataWebhook(Events.CONNECTION_UPDATE, {
         instance: this.instance.name,
         ...this.stateConnection,
@@ -721,13 +822,15 @@ export class BaileysStartupService extends ChannelStartupService {
         return message;
       },
     };
+    // Cleanup previous client before creating a new one
+    if (this.client) {
+      this.logger.info('Cleaning up previous client before creating new one for instance: ' + this.instanceName);
+      this.cleanupClient();
+    }
+
     this.endSession = false;
 
     this.client = makeWASocket(socketConfig);
-
-    if (this.localSettings.wavoipToken && this.localSettings.wavoipToken.length > 0) {
-      useVoiceCallsBaileys(this.localSettings.wavoipToken, this.client, this.connectionStatus.state as any, true);
-    }
 
     this.eventHandler();
 
