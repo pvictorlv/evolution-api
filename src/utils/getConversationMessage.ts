@@ -46,6 +46,9 @@ const getTypeMessage = (msg: any) => {
     externalAdReplyBody: msg?.contextInfo?.externalAdReply?.body
       ? `externalAdReplyBody|${msg.contextInfo.externalAdReply.body}`
       : undefined,
+    quotedAdBody: msg?.contextInfo?.quotedAd
+      ? `quotedAdBody|${msg.contextInfo.quotedAd.advertiserName || ''}${msg.contextInfo.quotedAd.caption ? ` - ${msg.contextInfo.quotedAd.caption}` : ''}`
+      : undefined,
   };
 
   const messageType = Object.keys(types).find((key) => types[key] !== undefined) || 'unknown';
@@ -53,13 +56,19 @@ const getTypeMessage = (msg: any) => {
   return { ...types, messageType };
 };
 
+const adMetadataKeys = new Set(['externalAdReplyBody', 'quotedAdBody']);
+
 const getMessageContent = (types: any) => {
-  const typeKey = Object.keys(types).find((key) => key !== 'externalAdReplyBody' && types[key] !== undefined);
+  const typeKey = Object.keys(types).find((key) => !adMetadataKeys.has(key) && types[key] !== undefined);
 
   let result = typeKey ? types[typeKey] : undefined;
 
   if (types.externalAdReplyBody) {
     result = result ? `${result}\n${types.externalAdReplyBody}` : types.externalAdReplyBody;
+  }
+
+  if (types.quotedAdBody) {
+    result = result ? `${result}\n${types.quotedAdBody}` : types.quotedAdBody;
   }
 
   return result;

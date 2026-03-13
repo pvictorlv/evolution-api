@@ -235,7 +235,7 @@ export class BaileysStartupService extends ChannelStartupService {
   private connectingTimeout: ReturnType<typeof setTimeout> | null = null;
   private reconnectAttempts = 0;
   private readonly MAX_RECONNECT_ATTEMPTS = 10;
-  private readonly CONNECTING_TIMEOUT_MS = 300_000; // 5 minutes
+  private readonly CONNECTING_TIMEOUT_MS = 120_000; // 2 minutes
 
   public stateConnection: wa.StateConnection = { state: 'close' };
 
@@ -4575,12 +4575,29 @@ export class BaileysStartupService extends ChannelStartupService {
       if (!message.key && message.message?.key) {
         message.key = message.message.key;
       }
+      // When getContentType returns messageContextInfo, the actual contextInfo
+      // (with externalAdReply/quotedAd) lives inside the real content type, not messageContextInfo.
+      let extractedContextInfo = contentMsg?.contextInfo;
+      if (!extractedContextInfo && contentType === 'messageContextInfo') {
+        const msgContent = message?.message;
+        extractedContextInfo =
+          msgContent?.extendedTextMessage?.contextInfo ||
+          msgContent?.imageMessage?.contextInfo ||
+          msgContent?.videoMessage?.contextInfo ||
+          msgContent?.audioMessage?.contextInfo ||
+          msgContent?.documentMessage?.contextInfo ||
+          msgContent?.contactMessage?.contextInfo ||
+          msgContent?.locationMessage?.contextInfo ||
+          msgContent?.listResponseMessage?.contextInfo ||
+          msgContent?.buttonsResponseMessage?.contextInfo;
+      }
+
       const messageRaw = {
         key: message.key,
         pushName: message.pushName || message?.participantAlt || message?.participant || '',
         status: status[message.status],
         message: {...message.message},
-        contextInfo: contentMsg?.contextInfo,
+        contextInfo: extractedContextInfo,
         messageType: contentType || 'unknown',
         messageTimestamp: Long.isLong(message.messageTimestamp)
             ? (message.messageTimestamp as Long).toNumber()
