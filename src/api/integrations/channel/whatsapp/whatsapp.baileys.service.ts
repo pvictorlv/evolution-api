@@ -136,7 +136,7 @@ import mimeTypes from 'mime-types';
 import NodeCache from 'node-cache';
 import cron from 'node-cron';
 import { release } from 'os';
-import { join } from 'path';
+import { join, posix } from 'path';
 import P from 'pino';
 import qrcode, { QRCodeToDataURLOptions } from 'qrcode';
 import qrcodeTerminal from 'qrcode-terminal';
@@ -1234,7 +1234,7 @@ export class BaileysStartupService extends ChannelStartupService {
         await Promise.allSettled(
             messageChunks.map((chunk) => this.sendDataWebhook(Events.MESSAGES_SET, chunk))
         );
-        
+
         //
         // for (const chunk of messageChunks) {
         //   this.sendDataWebhook(Events.MESSAGES_SET, chunk);
@@ -1473,7 +1473,7 @@ export class BaileysStartupService extends ChannelStartupService {
 
                   const { buffer, mediaType, fileName, size } = media;
                   const mimetype = mimeTypes.lookup(fileName).toString();
-                  const fullName = join(
+                  const fullName = posix.join(
                     `${this.instance.id}`,
                     received.key.remoteJid,
                     mediaType,
@@ -1481,7 +1481,8 @@ export class BaileysStartupService extends ChannelStartupService {
                     fileName,
                   );
 
-                  await s3Service.uploadFile(fullName, buffer, size.fileLength?.low, {
+                  const fileSize = size.fileLength?.low ?? (Buffer.isBuffer(buffer) ? buffer.length : undefined);
+                  await s3Service.uploadFile(fullName, buffer, fileSize, {
                     'Content-Type': mimetype,
                   });
 
@@ -2463,7 +2464,7 @@ export class BaileysStartupService extends ChannelStartupService {
 
             const mimetype = mimeTypes.lookup(fileName).toString();
 
-            const fullName = join(
+            const fullName = posix.join(
               `${this.instance.id}`,
               messageRaw.key.remoteJid,
               `${messageRaw.key.id}`,
@@ -2471,7 +2472,8 @@ export class BaileysStartupService extends ChannelStartupService {
               fileName,
             );
 
-            await s3Service.uploadFile(fullName, buffer, size.fileLength?.low, {
+            const fileSize = size.fileLength?.low ?? (Buffer.isBuffer(buffer) ? buffer.length : undefined);
+            await s3Service.uploadFile(fullName, buffer, fileSize, {
               'Content-Type': mimetype,
             });
 
@@ -2606,7 +2608,7 @@ export class BaileysStartupService extends ChannelStartupService {
     if (!text || text.trim().length === 0) {
       throw new BadRequestException('Text is required');
     }
-    
+
     return await this.sendMessageWithTyping(
       data.number,
       {
@@ -4575,23 +4577,24 @@ export class BaileysStartupService extends ChannelStartupService {
       if (!message.key && message.message?.key) {
         message.key = message.message.key;
       }
+
       // When getContentType returns messageContextInfo, the actual contextInfo
       // (with externalAdReply/quotedAd) lives inside the real content type, not messageContextInfo.
       let extractedContextInfo = contentMsg?.contextInfo;
       if (!extractedContextInfo && contentType === 'messageContextInfo') {
         const msgContent = message?.message;
         extractedContextInfo =
-          msgContent?.extendedTextMessage?.contextInfo ||
-          msgContent?.imageMessage?.contextInfo ||
-          msgContent?.videoMessage?.contextInfo ||
-          msgContent?.audioMessage?.contextInfo ||
-          msgContent?.documentMessage?.contextInfo ||
-          msgContent?.contactMessage?.contextInfo ||
-          msgContent?.locationMessage?.contextInfo ||
-          msgContent?.listResponseMessage?.contextInfo ||
-          msgContent?.buttonsResponseMessage?.contextInfo;
+            msgContent?.extendedTextMessage?.contextInfo ||
+            msgContent?.imageMessage?.contextInfo ||
+            msgContent?.videoMessage?.contextInfo ||
+            msgContent?.audioMessage?.contextInfo ||
+            msgContent?.documentMessage?.contextInfo ||
+            msgContent?.contactMessage?.contextInfo ||
+            msgContent?.locationMessage?.contextInfo ||
+            msgContent?.listResponseMessage?.contextInfo ||
+            msgContent?.buttonsResponseMessage?.contextInfo;
       }
-
+      
       const messageRaw = {
         key: message.key,
         pushName: message.pushName || message?.participantAlt || message?.participant || '',

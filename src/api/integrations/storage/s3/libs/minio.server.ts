@@ -2,7 +2,7 @@ import { ConfigService, S3 } from '@config/env.config';
 import { Logger } from '@config/logger.config';
 import { BadRequestException } from '@exceptions';
 import * as MinIo from 'minio';
-import { join } from 'path';
+import { posix } from 'path';
 import { Readable, Transform } from 'stream';
 
 const logger = new Logger('S3 Service');
@@ -84,23 +84,32 @@ const createBucket = async () => {
 
 createBucket();
 
+const getPublicUrl = (objectName: string): string | undefined => {
+  if (BUCKET?.PUBLIC_URL) {
+    const baseUrl = BUCKET.PUBLIC_URL.replace(/\/+$/, '');
+    return `${baseUrl}/${objectName}`;
+  }
+  return undefined;
+};
+
 const uploadFile = async (fileName: string, file: Buffer | Transform | Readable, size: number, metadata: Metadata) => {
   if (minioClient) {
-    const objectName = join('evolution-api', fileName);
-    try {
-      metadata['custom-header-application'] = 'evolution-api';
-      return await minioClient.putObject(bucketName, objectName, file, size, metadata);
-    } catch (error) {
-      logger.error(error);
-      return error;
-    }
+    const objectName = posix.join('evolution-api', fileName);
+    metadata['custom-header-application'] = 'evolution-api';
+    await minioClient.putObject(bucketName, objectName, file, size, metadata);
   }
 };
 
 const getObjectUrl = async (fileName: string, expiry?: number) => {
   if (minioClient) {
     try {
-      const objectName = join('evolution-api', fileName);
+      const objectName = posix.join('evolution-api', fileName);
+
+      const publicUrl = getPublicUrl(objectName);
+      if (publicUrl) {
+        return publicUrl;
+      }
+
       if (expiry) {
         return await minioClient.presignedGetObject(bucketName, objectName, expiry);
       }
@@ -119,20 +128,15 @@ const uploadTempFile = async (
   metadata: Metadata,
 ) => {
   if (minioClient) {
-    const objectName = join(folder, fileName);
-    try {
-      metadata['custom-header-application'] = 'evolution-api';
-      return await minioClient.putObject(bucketName, objectName, file, size, metadata);
-    } catch (error) {
-      logger.error(error);
-      return error;
-    }
+    const objectName = posix.join(folder, fileName);
+    metadata['custom-header-application'] = 'evolution-api';
+    await minioClient.putObject(bucketName, objectName, file, size, metadata);
   }
 };
 
 const deleteFile = async (folder: string, fileName: string) => {
   if (minioClient) {
-    const objectName = join(folder, fileName);
+    const objectName = posix.join(folder, fileName);
     try {
       return await minioClient.removeObject(bucketName, objectName);
     } catch (error) {

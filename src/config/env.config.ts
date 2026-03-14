@@ -252,6 +252,7 @@ export type S3 = {
   USE_SSL?: boolean;
   IGNORE_POLICY?: boolean;
   REGION?: string;
+  PUBLIC_URL?: string;
 };
 
 export type CacheConf = { REDIS: CacheConfRedis; LOCAL: CacheConfLocal };
@@ -557,6 +558,7 @@ export class ConfigService {
         USE_SSL: process.env?.S3_USE_SSL === 'true',
         IGNORE_POLICY: process.env?.S3_IGNORE_POLICY === 'true',
         REGION: process.env?.S3_REGION,
+        PUBLIC_URL: process.env?.S3_PUBLIC_URL,
       },
       AUTHENTICATION: {
         API_KEY: {

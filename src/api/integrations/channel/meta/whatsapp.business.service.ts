@@ -31,7 +31,7 @@ import FormData from 'form-data';
 import { createReadStream } from 'fs';
 import mimeTypes from 'mime-types';
 import {extension} from "mime-types";
-import { join } from 'path';
+import { join, posix } from 'path';
 
 export class BusinessStartupService extends ChannelStartupService {
   constructor(
@@ -355,7 +355,7 @@ export class BusinessStartupService extends ChannelStartupService {
 
               const size = result.headers['content-length'] || buffer.data.byteLength;
 
-              const fullName = join(`${this.instance.id}`, key.remoteJid, mediaType, fileName);
+              const fullName = posix.join(`${this.instance.id}`, key.remoteJid, mediaType, fileName);
 
               await s3Service.uploadFile(fullName, buffer.data, size, {
                 'Content-Type': mimetype,

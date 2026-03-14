@@ -21,7 +21,7 @@ import { isBase64, isURL } from 'class-validator';
 import EventEmitter2 from 'eventemitter2';
 import FormData from 'form-data';
 import mimeTypes from 'mime-types';
-import { join } from 'path';
+import { join, posix } from 'path';
 import { v4 } from 'uuid';
 
 export class EvolutionStartupService extends ChannelStartupService {
@@ -483,7 +483,7 @@ export class EvolutionStartupService extends ChannelStartupService {
 
             const size = buffer.byteLength;
 
-            const fullName = join(`${this.instance.id}`, messageRaw.key.remoteJid, mediaType, v4().replace(/-/g, ""), fileName);
+            const fullName = posix.join(`${this.instance.id}`, messageRaw.key.remoteJid, mediaType, v4().replace(/-/g, ""), fileName);
 
             await s3Service.uploadFile(fullName, buffer, size, {
               'Content-Type': mimetype,
