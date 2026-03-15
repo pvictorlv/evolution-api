@@ -97,6 +97,7 @@ import makeWASocket, {
   Contact,
   delay,
   DisconnectReason,
+  downloadContentFromMessage,
   downloadMediaMessage,
   fetchLatestBaileysVersion,
   fetchLatestWaWebVersion,
@@ -1430,12 +1431,14 @@ export class BaileysStartupService extends ChannelStartupService {
             await this.client.readMessages([received.key]);
           }
 
+          let isNewMessage = false;
           if (this.configService.get<Database>('DATABASE').SAVE_DATA.NEW_MESSAGE) {
             let msg = messageRaw;
             try {
               msg = await this.prismaRepository.message.create({
                 data: sanitizeMessageContent(messageRaw),
               });
+              isNewMessage = true;
 
               if (received.key.fromMe === false) {
                 if (msg.status === status[3]) {
@@ -1458,64 +1461,64 @@ export class BaileysStartupService extends ChannelStartupService {
               console.trace(e);
             }
 
-            if (isMedia) {
+            if (isMedia && isNewMessage) {
 
               if (this.configService.get<S3>('S3').ENABLE) {
-                // console.log('S3 UPLOAD');
                 try {
                   const message: any = received;
-                  const media = await this.getBase64FromMediaMessage(
-                    {
-                      message,
-                    },
-                    true,
-                  );
 
-                  const { buffer, mediaType, fileName, size } = media;
-                  const mimetype = mimeTypes.lookup(fileName).toString();
-                  const fullName = posix.join(
-                    `${this.instance.id}`,
-                    received.key.remoteJid,
-                    mediaType,
-                    v4().replace(/-/g, ''),
-                    fileName,
-                  );
+                  const hasRealMedia = this.hasValidMediaContent(message);
+                  if (!hasRealMedia) {
+                    this.logger.warn('Message detected as media but contains no valid media content');
+                  } else {
+                    const media = await this.getBase64FromMediaMessage({ message }, true);
 
-                  const fileSize = size.fileLength?.low ?? (Buffer.isBuffer(buffer) ? buffer.length : undefined);
-                  await s3Service.uploadFile(fullName, buffer, fileSize, {
-                    'Content-Type': mimetype,
-                  });
+                    if (!media) {
+                      this.logger.verbose('No valid media to upload (messageContextInfo only), skipping S3');
+                    } else {
+                      const { buffer, mediaType, fileName, size } = media;
+                      const mimetype = mimeTypes.lookup(fileName).toString();
+                      const fullName = posix.join(
+                        `${this.instance.id}`,
+                        received.key.remoteJid,
+                        mediaType,
+                        v4().replace(/-/g, ''),
+                        fileName,
+                      );
 
-                  try {
-                    await this.prismaRepository.media.create({
-                      data: {
-                        messageId: msg.id,
-                        instanceId: this.instanceId,
-                        type: mediaType,
-                        fileName: fullName,
-                        mimetype,
-                      },
-                    });
+                      const fileSize = size.fileLength?.low ?? (Buffer.isBuffer(buffer) ? buffer.length : undefined);
+                      await s3Service.uploadFile(fullName, buffer, fileSize, {
+                        'Content-Type': mimetype,
+                      });
 
-                    const mediaUrl = await s3Service.getObjectUrl(fullName);
+                      await this.prismaRepository.media.create({
+                        data: {
+                          messageId: msg.id,
+                          instanceId: this.instanceId,
+                          type: mediaType,
+                          fileName: fullName,
+                          mimetype,
+                        },
+                      });
 
-                    messageRaw.message.mediaUrl = mediaUrl;
+                      const mediaUrl = await s3Service.getObjectUrl(fullName);
+                      messageRaw.message.mediaUrl = mediaUrl;
 
-                    await this.prismaRepository.message.update({
-                      where: { id: msg.id },
-                      data: sanitizeMessageContent(messageRaw),
-                    });
-                  } catch (error) {
-                    console.trace(error);
-                    this.logger.error(['Error on insert media record', error?.message, error?.stack]);
+                      await this.prismaRepository.message.update({
+                        where: { id: msg.id },
+                        data: sanitizeMessageContent(messageRaw),
+                      });
+                    }
                   }
                 } catch (error) {
-                  console.trace(error);
-                  messageRaw.message.mediaUrl = 'Error downloading';
-                  this.logger.error(['Error on upload file to minio', error?.message, error?.stack]);
+                  this.logger.error(['Error on upload file to S3', error?.message, error?.stack]);
                 }
               }
             }
+          }
+
+          if (!isNewMessage) {
+            continue;
           }
 
           if (this.localWebhook.enabled) {
@@ -3863,12 +3866,46 @@ export class BaileysStartupService extends ChannelStartupService {
     }
   }
 
+  private mapMediaType(mediaType: string): string | null {
+    const map: Record<string, string> = {
+      imageMessage: 'image',
+      videoMessage: 'video',
+      documentMessage: 'document',
+      stickerMessage: 'sticker',
+      audioMessage: 'audio',
+      ptvMessage: 'video',
+    };
+    return map[mediaType] || null;
+  }
+
+  private hasValidMediaContent(message: any): boolean {
+    if (!message?.message) return false;
+
+    const msg = message.message;
+
+    if (Object.keys(msg).length === 1 && Object.prototype.hasOwnProperty.call(msg, 'messageContextInfo')) {
+      return false;
+    }
+
+    const mediaTypes = [
+      'imageMessage',
+      'videoMessage',
+      'stickerMessage',
+      'documentMessage',
+      'documentWithCaptionMessage',
+      'ptvMessage',
+      'audioMessage',
+    ];
+
+    return mediaTypes.some((type) => msg[type] && Object.keys(msg[type]).length > 0);
+  }
+
   public async getBase64FromMediaMessage(data: getBase64FromMediaMessageDto, getBuffer = false) {
     try {
       const m = data?.message;
       const convertToMp4 = data?.convertToMp4 ?? false;
 
-      let msg = m?.message ? m : ((await this.getMessage(m.key, true)) as IWebMessageInfo);
+      const msg = m?.message ? m : ((await this.getMessage(m.key, true)) as proto.IWebMessageInfo);
 
       if (!msg) {
         throw 'Message not found';
@@ -3878,6 +3915,11 @@ export class BaileysStartupService extends ChannelStartupService {
         if (msg.message[subtype]) {
           msg.message = msg.message[subtype].message;
         }
+      }
+
+      if ('messageContextInfo' in msg.message && Object.keys(msg.message).length === 1) {
+        this.logger.verbose('Message contains only messageContextInfo, skipping media processing');
+        return null;
       }
 
       let mediaMessage: any;
@@ -3896,21 +3938,53 @@ export class BaileysStartupService extends ChannelStartupService {
       }
 
       if (typeof mediaMessage['mediaKey'] === 'object') {
-        // console.log('mediaKey is an object, converting to string...');
-        // console.log(msg);
-        // msg = JSON.parse(JSON.stringify(msg, null, 2));
+        msg.message[mediaType].mediaKey = Uint8Array.from(Object.values(mediaMessage['mediaKey']));
       }
 
-      // console.log('trying to download media message...');
-      const buffer = await downloadMediaMessage(
-        msg as WAMessage,
-        'buffer',
-        {},
-        {
-          logger: P({ level: 'error' }) as any,
-          reuploadRequest: this.client.updateMediaMessage,
-        },
-      );
+      let buffer: Buffer;
+
+      try {
+        buffer = await downloadMediaMessage(
+          msg as WAMessage,
+          'buffer',
+          {},
+          {
+            logger: P({ level: 'error' }) as any,
+            reuploadRequest: this.client.updateMediaMessage,
+          },
+        );
+      } catch {
+        this.logger.error('Download Media failed, trying fallback with downloadContentFromMessage in 5s...');
+        await new Promise((resolve) => setTimeout(resolve, 5000));
+
+        const detectedType = Object.keys(msg.message).find((key) => key.endsWith('Message'));
+        if (!detectedType) throw new Error('Could not determine mediaType for fallback');
+
+        const mappedType = this.mapMediaType(detectedType);
+        if (!mappedType) throw new Error(`Unsupported media type for fallback: ${detectedType}`);
+
+        try {
+          const media = await downloadContentFromMessage(
+            {
+              mediaKey: msg.message?.[detectedType]?.mediaKey,
+              directPath: msg.message?.[detectedType]?.directPath,
+              url: `https://mmg.whatsapp.net${msg?.message?.[detectedType]?.directPath}`,
+            },
+            mappedType as any,
+            {},
+          );
+          const chunks: Buffer[] = [];
+          for await (const chunk of media) {
+            chunks.push(chunk as Buffer);
+          }
+          buffer = Buffer.concat(chunks);
+          this.logger.info('Download Media with downloadContentFromMessage was successful!');
+        } catch (fallbackErr) {
+          this.logger.error('Download Media with downloadContentFromMessage also failed!');
+          throw fallbackErr;
+        }
+      }
+
       const typeMessage = getContentType(msg.message);
 
       const ext = mimeTypes.extension(mediaMessage?.['mimetype']);
@@ -4594,7 +4668,7 @@ export class BaileysStartupService extends ChannelStartupService {
             msgContent?.listResponseMessage?.contextInfo ||
             msgContent?.buttonsResponseMessage?.contextInfo;
       }
-      
+
       const messageRaw = {
         key: message.key,
         pushName: message.pushName || message?.participantAlt || message?.participant || '',
