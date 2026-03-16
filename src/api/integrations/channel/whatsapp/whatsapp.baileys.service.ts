@@ -238,6 +238,13 @@ export class BaileysStartupService extends ChannelStartupService {
   private readonly MAX_RECONNECT_ATTEMPTS = 10;
   private readonly CONNECTING_TIMEOUT_MS = 120_000; // 2 minutes
 
+  private cachedSettings: any = null;
+  private cachedSettingsTimestamp = 0;
+  private readonly SETTINGS_CACHE_TTL_MS = 30_000; // 30 seconds
+
+  private profilePicCache = new Map<string, { url: string | null; timestamp: number }>();
+  private readonly PROFILE_PIC_CACHE_TTL_MS = 300_000; // 5 minutes
+
   public stateConnection: wa.StateConnection = { state: 'close' };
 
   public phoneNumber: string;
@@ -287,7 +294,42 @@ export class BaileysStartupService extends ChannelStartupService {
       this.logger.warn('Error ending client: ' + error);
     }
 
+    this.cachedSettings = null;
+    this.cachedSettingsTimestamp = 0;
+    this.profilePicCache.clear();
+
     this.logger.info('Client cleaned up for instance: ' + this.instanceName);
+  }
+
+  private async getCachedSettings() {
+    const now = Date.now();
+    if (this.cachedSettings && now - this.cachedSettingsTimestamp < this.SETTINGS_CACHE_TTL_MS) {
+      return this.cachedSettings;
+    }
+    this.cachedSettings = await this.findSettings();
+    this.cachedSettingsTimestamp = now;
+    return this.cachedSettings;
+  }
+
+  private async getCachedProfilePicture(remoteJid: string): Promise<string | null> {
+    const cached = this.profilePicCache.get(remoteJid);
+    const now = Date.now();
+    if (cached && now - cached.timestamp < this.PROFILE_PIC_CACHE_TTL_MS) {
+      return cached.url;
+    }
+    const result = await this.profilePicture(remoteJid);
+    this.profilePicCache.set(remoteJid, { url: result.profilePictureUrl, timestamp: now });
+
+    // Evict old entries to prevent memory leak
+    if (this.profilePicCache.size > 1000) {
+      const entries = [...this.profilePicCache.entries()];
+      entries.sort((a, b) => a[1].timestamp - b[1].timestamp);
+      for (let i = 0; i < entries.length - 500; i++) {
+        this.profilePicCache.delete(entries[i][0]);
+      }
+    }
+
+    return result.profilePictureUrl;
   }
 
   private clearConnectingTimeout() {
@@ -1223,22 +1265,18 @@ export class BaileysStartupService extends ChannelStartupService {
 
         this.sendDataWebhook(Events.MESSAGES_SET, messagesRaw);
 
-
-        //
-        // for (const chunk of messageChunks) {
-        //   this.sendDataWebhook(Events.MESSAGES_SET, chunk);
-        // }
-
-        //this.sendDataWebhook(Events.MESSAGES_SET, [...messagesRaw]);
-
         if (this.configService.get<Database>('DATABASE').SAVE_DATA.HISTORIC) {
-          try {
-            await this.prismaRepository.message.createMany({
-              data: sanitizeMessageContent(messagesRaw),
-              skipDuplicates: true,
-            });
-          } catch (error) {
-            this.logger.error('Error on historic batch insert: ' + error.toString());
+          const CHUNK_SIZE = 100;
+          for (let i = 0; i < messagesRaw.length; i += CHUNK_SIZE) {
+            const chunk = messagesRaw.slice(i, i + CHUNK_SIZE);
+            try {
+              await this.prismaRepository.message.createMany({
+                data: sanitizeMessageContent(chunk),
+                skipDuplicates: true,
+              });
+            } catch (error) {
+              this.logger.error(`Error on historic batch insert (chunk ${i}-${i + chunk.length}): ${error.toString()}`);
+            }
           }
         }
 
@@ -1545,7 +1583,7 @@ export class BaileysStartupService extends ChannelStartupService {
           } = {
             remoteJid: received.key.remoteJid,
             pushName: received.key.fromMe ? '' : received.key.fromMe == null ? '' : received.pushName,
-            profilePicUrl: (await this.profilePicture(received.key.remoteJid)).profilePictureUrl,
+            profilePicUrl: await this.getCachedProfilePicture(received.key.remoteJid),
             instanceId: this.instanceId,
           };
 
@@ -1754,7 +1792,12 @@ export class BaileysStartupService extends ChannelStartupService {
         }
       }
 
-      await Promise.all(Object.keys(readChatToUpdate).map((remoteJid) => this.updateChatUnreadMessages(remoteJid)));
+      // Limit concurrency to avoid exhausting DB connections
+      const jids = Object.keys(readChatToUpdate);
+      for (let i = 0; i < jids.length; i += 5) {
+        const batch = jids.slice(i, i + 5);
+        await Promise.all(batch.map((remoteJid) => this.updateChatUnreadMessages(remoteJid)));
+      }
     },
   };
 
@@ -1852,8 +1895,7 @@ export class BaileysStartupService extends ChannelStartupService {
   private eventHandler() {
     this.client.ev.process(async (events) => {
       if (!this.endSession) {
-        const database = this.configService.get<Database>('DATABASE');
-        const settings = await this.findSettings();
+        const settings = await this.getCachedSettings();
 
         if (events.call) {
           const call = events.call[0];
@@ -1886,17 +1928,17 @@ export class BaileysStartupService extends ChannelStartupService {
 
         if (events['messaging-history.set']) {
           const payload = events['messaging-history.set'];
-          this.messageHandle['messaging-history.set'](payload);
+          await this.messageHandle['messaging-history.set'](payload);
         }
 
         if (events['messages.upsert']) {
           const payload = events['messages.upsert'];
-          this.messageHandle['messages.upsert'](payload, settings);
+          await this.messageHandle['messages.upsert'](payload, settings);
         }
 
         if (events['messages.update']) {
           const payload = events['messages.update'];
-          this.messageHandle['messages.update'](payload, settings);
+          await this.messageHandle['messages.update'](payload, settings);
         }
 
         if (events['message-receipt.update']) {
@@ -1909,11 +1951,14 @@ export class BaileysStartupService extends ChannelStartupService {
             }
           }
 
-          await Promise.all(
-            Object.keys(remotesJidMap).map(async (remoteJid) =>
-              this.updateMessagesReadedByTimestamp(remoteJid, remotesJidMap[remoteJid]),
-            ),
-          );
+          const remoteJids = Object.keys(remotesJidMap);
+          // Limit concurrency to avoid exhausting DB connections
+          for (let i = 0; i < remoteJids.length; i += 5) {
+            const batch = remoteJids.slice(i, i + 5);
+            await Promise.all(
+              batch.map((remoteJid) => this.updateMessagesReadedByTimestamp(remoteJid, remotesJidMap[remoteJid])),
+            );
+          }
         }
 
         if (events['presence.update']) {
@@ -1926,15 +1971,14 @@ export class BaileysStartupService extends ChannelStartupService {
           this.sendDataWebhook(Events.PRESENCE_UPDATE, payload);
         }
 
-        // chats.phoneNumberShare
         if (events['chats.phoneNumberShare']) {
           const payload = events['chats.phoneNumberShare'];
-          this.contactHandle['chats.phoneNumberShare'](payload);
+          await this.contactHandle['chats.phoneNumberShare'](payload);
         }
 
         if (events['lid-mapping.update']) {
           const payload = events['lid-mapping.update'];
-          this.contactHandle['lid-mapping.update'](payload);
+          await this.contactHandle['lid-mapping.update'](payload);
         }
 
         if (!settings?.groupsIgnore) {
@@ -1956,40 +2000,28 @@ export class BaileysStartupService extends ChannelStartupService {
 
         if (events['chats.upsert']) {
           const payload = events['chats.upsert'];
-          this.chatHandle['chats.upsert'](payload);
+          await this.chatHandle['chats.upsert'](payload);
         }
 
         if (events['chats.update']) {
           const payload = events['chats.update'];
-          this.chatHandle['chats.update'](payload);
+          await this.chatHandle['chats.update'](payload);
         }
 
         if (events['chats.delete']) {
           const payload = events['chats.delete'];
-          this.chatHandle['chats.delete'](payload);
+          await this.chatHandle['chats.delete'](payload);
         }
 
         if (events['contacts.upsert']) {
           const payload = events['contacts.upsert'];
-          this.contactHandle['contacts.upsert'](payload);
+          await this.contactHandle['contacts.upsert'](payload);
         }
 
         if (events['contacts.update']) {
           const payload = events['contacts.update'];
-          this.contactHandle['contacts.update'](payload);
+          await this.contactHandle['contacts.update'](payload);
         }
-/*
-        if (events[Events.LABELS_ASSOCIATION]) {
-          const payload = events[Events.LABELS_ASSOCIATION];
-          this.labelHandle[Events.LABELS_ASSOCIATION](payload, database);
-          return;
-        }
-
-        if (events[Events.LABELS_EDIT]) {
-          const payload = events[Events.LABELS_EDIT];
-          this.labelHandle[Events.LABELS_EDIT](payload);
-          return;
-        }*/
       }
     });
   }
@@ -4737,7 +4769,7 @@ export class BaileysStartupService extends ChannelStartupService {
 
     if (result) {
       if (result > 0) {
-        this.updateChatUnreadMessages(remoteJid);
+        await this.updateChatUnreadMessages(remoteJid);
       }
 
       return result;
