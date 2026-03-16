@@ -1263,12 +1263,13 @@ export class BaileysStartupService extends ChannelStartupService {
           messagesRaw.push(this.prepareMessage(m));
         }
 
-        this.sendDataWebhook(Events.MESSAGES_SET, messagesRaw);
+        const CHUNK_SIZE = 100;
+        for (let i = 0; i < messagesRaw.length; i += CHUNK_SIZE) {
+          const chunk = messagesRaw.slice(i, i + CHUNK_SIZE);
 
-        if (this.configService.get<Database>('DATABASE').SAVE_DATA.HISTORIC) {
-          const CHUNK_SIZE = 100;
-          for (let i = 0; i < messagesRaw.length; i += CHUNK_SIZE) {
-            const chunk = messagesRaw.slice(i, i + CHUNK_SIZE);
+          this.sendDataWebhook(Events.MESSAGES_SET, chunk);
+
+          if (this.configService.get<Database>('DATABASE').SAVE_DATA.HISTORIC) {
             try {
               await this.prismaRepository.message.createMany({
                 data: sanitizeMessageContent(chunk),
