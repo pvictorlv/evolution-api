@@ -2468,45 +2468,49 @@ export class BaileysStartupService extends ChannelStartupService {
               true,
             );
 
-            const { buffer, mediaType, fileName, size } = media;
-            cachedMediaBuffer = buffer;
+            if (!media) {
+              this.logger.verbose('No valid media to upload (messageContextInfo only), skipping S3');
+            } else {
+              const { buffer, mediaType, fileName, size } = media;
+              cachedMediaBuffer = buffer;
 
-            const mimetype = mimeTypes.lookup(fileName) || 'application/octet-stream';
+              const mimetype = mimeTypes.lookup(fileName) || 'application/octet-stream';
 
-            const fullName = posix.join(
-              `${this.instance.id}`,
-              messageRaw.key.remoteJid,
-              `${messageRaw.key.id}`,
-              mediaType,
-              fileName,
-            );
+              const fullName = posix.join(
+                `${this.instance.id}`,
+                messageRaw.key.remoteJid,
+                `${messageRaw.key.id}`,
+                mediaType,
+                fileName,
+              );
 
-            const fileSize = size.fileLength?.low ?? (Buffer.isBuffer(buffer) ? buffer.length : undefined);
-            await s3Service.uploadFile(fullName, buffer, fileSize, {
-              'Content-Type': mimetype,
-            });
-
-            try {
-              await this.prismaRepository.media.create({
-                data: {
-                  messageId: msg.id,
-                  instanceId: this.instanceId,
-                  type: mediaType,
-                  fileName: fullName,
-                  mimetype,
-                },
+              const fileSize = size.fileLength?.low ?? (Buffer.isBuffer(buffer) ? buffer.length : undefined);
+              await s3Service.uploadFile(fullName, buffer, fileSize, {
+                'Content-Type': mimetype,
               });
 
-              const mediaUrl = await s3Service.getObjectUrl(fullName);
+              try {
+                await this.prismaRepository.media.create({
+                  data: {
+                    messageId: msg.id,
+                    instanceId: this.instanceId,
+                    type: mediaType,
+                    fileName: fullName,
+                    mimetype,
+                  },
+                });
 
-              messageRaw.message.mediaUrl = mediaUrl;
+                const mediaUrl = await s3Service.getObjectUrl(fullName);
 
-              await this.prismaRepository.message.update({
-                where: { id: msg.id },
-                data: sanitizeMessageContent(messageRaw),
-              });
-            } catch (e) {
-              this.logger.error(['Error on insert media record in database', e?.message, e?.stack]);
+                messageRaw.message.mediaUrl = mediaUrl;
+
+                await this.prismaRepository.message.update({
+                  where: { id: msg.id },
+                  data: sanitizeMessageContent(messageRaw),
+                });
+              } catch (e) {
+                this.logger.error(['Error on insert media record in database', e?.message, e?.stack]);
+              }
             }
           } catch (error) {
             this.logger.error(['Error on upload file to S3', error?.message, error?.stack]);
@@ -3891,14 +3895,7 @@ export class BaileysStartupService extends ChannelStartupService {
     let msg = message.message;
 
     // Unwrap subtypes: ephemeral, viewOnce variants, documentWithCaption
-    const subtypeKeys = [
-      'ephemeralMessage',
-      'viewOnceMessage',
-      'viewOnceMessageV2',
-      'viewOnceMessageV2Extension',
-      'documentWithCaptionMessage',
-    ];
-    for (const subtype of subtypeKeys) {
+    for (const subtype of MessageSubtype) {
       if (msg[subtype]?.message) {
         msg = msg[subtype].message;
       }
@@ -3965,8 +3962,7 @@ export class BaileysStartupService extends ChannelStartupService {
     let innerMsg = message;
 
     // Unwrap subtypes
-    const subtypeKeys = ['ephemeralMessage', 'viewOnceMessage', 'viewOnceMessageV2', 'viewOnceMessageV2Extension', 'documentWithCaptionMessage'];
-    for (const subtype of subtypeKeys) {
+    for (const subtype of MessageSubtype) {
       if (innerMsg[subtype]?.message) {
         innerMsg = innerMsg[subtype].message;
       }
@@ -4017,18 +4013,17 @@ export class BaileysStartupService extends ChannelStartupService {
         throw 'Message not found';
       }
 
-      // Unwrap all known subtypes including viewOnce variants
-      const allSubtypes = [
-        ...MessageSubtype,
-        'viewOnceMessageV2Extension',
-      ];
-      for (const subtype of allSubtypes) {
-        if (msg.message[subtype]?.message) {
-          msg.message = msg.message[subtype].message;
+      // Work on a copy to avoid mutating the original message object
+      let unwrappedMessage = { ...msg.message };
+
+      // Unwrap all known subtypes (viewOnce, ephemeral, etc.)
+      for (const subtype of MessageSubtype) {
+        if (unwrappedMessage[subtype]?.message) {
+          unwrappedMessage = { ...unwrappedMessage[subtype].message };
         }
       }
 
-      if ('messageContextInfo' in msg.message && Object.keys(msg.message).length === 1) {
+      if ('messageContextInfo' in unwrappedMessage && Object.keys(unwrappedMessage).length === 1) {
         this.logger.verbose('Message contains only messageContextInfo, skipping media processing');
         return null;
       }
@@ -4037,7 +4032,7 @@ export class BaileysStartupService extends ChannelStartupService {
       let mediaType: string;
 
       for (const type of TypeMediaMessage) {
-        mediaMessage = msg.message[type];
+        mediaMessage = unwrappedMessage[type];
         if (mediaMessage) {
           mediaType = type;
           break;
@@ -4050,16 +4045,20 @@ export class BaileysStartupService extends ChannelStartupService {
 
       // Ensure mediaKey is Uint8Array (may be plain object after JSON serialization from DB)
       if (mediaMessage['mediaKey'] && typeof mediaMessage['mediaKey'] === 'object' && !(mediaMessage['mediaKey'] instanceof Uint8Array)) {
-        msg.message[mediaType].mediaKey = Uint8Array.from(Object.values(mediaMessage['mediaKey']));
+        unwrappedMessage[mediaType] = { ...mediaMessage, mediaKey: Uint8Array.from(Object.values(mediaMessage['mediaKey'])) };
+        mediaMessage = unwrappedMessage[mediaType];
       }
+
+      // Build a clean WAMessage copy for download (with unwrapped message)
+      const downloadMsg = { ...msg, message: unwrappedMessage };
 
       let buffer: Buffer;
 
-      buffer = await this.downloadMediaWithRetry(msg as WAMessage);
+      buffer = await this.downloadMediaWithRetry(downloadMsg as WAMessage);
 
-      const typeMessage = getContentType(msg.message);
+      const typeMessage = getContentType(unwrappedMessage);
 
-      const ext = mimeTypes.extension(mediaMessage?.['mimetype']);
+      const ext = mimeTypes.extension(mediaMessage?.['mimetype']) || 'bin';
       const fileName = mediaMessage?.['fileName'] || `${msg.key.id}.${ext}` || `${v4()}.${ext}`;
 
       if (convertToMp4 && typeMessage === 'audioMessage') {
