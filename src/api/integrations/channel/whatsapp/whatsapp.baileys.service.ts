@@ -1537,8 +1537,14 @@ export class BaileysStartupService extends ChannelStartupService {
                 }
               }
 
-              // Webhook base64: reuse buffer from S3 download if available
-              if (this.localWebhook.enabled && this.localWebhook.webhookBase64) {
+              // Include base64 only when mediaUrl is not a valid public URL
+              // (i.e., S3 upload failed, not configured, or URL is a raw WhatsApp CDN URL like mmg.whatsapp.net)
+              const hasValidMediaUrl = messageRaw.message.mediaUrl
+                && typeof messageRaw.message.mediaUrl === 'string'
+                && messageRaw.message.mediaUrl.startsWith('http')
+                && !messageRaw.message.mediaUrl.includes('mmg.whatsapp.net');
+
+              if ( !hasValidMediaUrl) {
                 try {
                   if (cachedMediaBuffer) {
                     messageRaw.message.base64 = cachedMediaBuffer.toString('base64');
@@ -1549,7 +1555,7 @@ export class BaileysStartupService extends ChannelStartupService {
                     messageRaw.message.base64 = buffer ? buffer.toString('base64') : undefined;
                   }
                 } catch (error) {
-                  this.logger.error(['Error converting media to base64', error?.message]);
+                  this.logger.error(['Error downloading media for webhook base64', error?.message]);
                 }
               }
             }
@@ -2518,24 +2524,27 @@ export class BaileysStartupService extends ChannelStartupService {
         }
       }
 
-      if (this.localWebhook.enabled) {
-        if (isMedia && this.localWebhook.webhookBase64) {
-          try {
-            if (cachedMediaBuffer) {
-              messageRaw.message.base64 = cachedMediaBuffer.toString('base64');
-            } else {
-              const buffer = await this.downloadMediaWithRetry(
-                { key: messageRaw.key, message: messageRaw?.message },
-              );
-              messageRaw.message.base64 = buffer ? buffer.toString('base64') : undefined;
-            }
-          } catch (error) {
-            this.logger.error(['Error converting media to base64', error?.message]);
+      const hasValidSentMediaUrl = messageRaw.message.mediaUrl
+        && typeof messageRaw.message.mediaUrl === 'string'
+        && messageRaw.message.mediaUrl.startsWith('http')
+        && !messageRaw.message.mediaUrl.includes('mmg.whatsapp.net');
+
+      if (!hasValidSentMediaUrl) {
+        try {
+          if (cachedMediaBuffer) {
+            messageRaw.message.base64 = cachedMediaBuffer.toString('base64');
+          } else {
+            const buffer = await this.downloadMediaWithRetry(
+              { key: messageRaw.key, message: messageRaw?.message },
+            );
+            messageRaw.message.base64 = buffer ? buffer.toString('base64') : undefined;
           }
+        } catch (error) {
+          this.logger.error(['Error downloading media for webhook base64', error?.message]);
         }
       }
 
-      this.logger.log(messageRaw);
+      //this.logger.log(messageRaw);
 
       this.sendDataWebhook(Events.SEND_MESSAGE, messageRaw);
 
