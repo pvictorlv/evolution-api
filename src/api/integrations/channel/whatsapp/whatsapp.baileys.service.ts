@@ -1386,14 +1386,8 @@ export class BaileysStartupService extends ChannelStartupService {
             continue;
           }*/
 
-          const isMedia =
-            received?.message?.imageMessage ||
-            received?.message?.videoMessage ||
-            received?.message?.stickerMessage ||
-            received?.message?.documentMessage ||
-            received?.message?.documentWithCaptionMessage ||
-            received?.message?.ptvMessage ||
-            received?.message?.audioMessage;
+          const extractedMedia = this.extractMediaFromMessage(received);
+          const isMedia = !!extractedMedia;
 
           if (
             (received.message?.protocolMessage ||
@@ -1411,10 +1405,10 @@ export class BaileysStartupService extends ChannelStartupService {
             !received.message?.buttonsMessage &&
             !received.message?.templateMessage &&
             !received.message?.listMessage &&
-            !received.message?.viewOnceMessage
+            !received.message?.viewOnceMessage &&
+            !received.message?.viewOnceMessageV2 &&
+            !received.message?.viewOnceMessageV2Extension
           ) {
-            // this.logger.warn('protocolMessage or pollUpdateMessage or empty message, ignored' + received);
-            // this.logger.warn('peerDataOperationRequestResponseMessage: ' + received.message?.protocolMessage?.peerDataOperationRequestResponseMessage);
             continue;
           }
 
@@ -1489,13 +1483,13 @@ export class BaileysStartupService extends ChannelStartupService {
             }
 
             if (isMedia && isNewMessage) {
+              let cachedMediaBuffer: Buffer | null = null;
 
               if (this.configService.get<S3>('S3').ENABLE) {
                 try {
                   const message: any = received;
 
-                  const hasRealMedia = this.hasValidMediaContent(message);
-                  if (!hasRealMedia) {
+                  if (!extractedMedia) {
                     this.logger.warn('Message detected as media but contains no valid media content');
                   } else {
                     const media = await this.getBase64FromMediaMessage({ message }, true);
@@ -1504,7 +1498,8 @@ export class BaileysStartupService extends ChannelStartupService {
                       this.logger.verbose('No valid media to upload (messageContextInfo only), skipping S3');
                     } else {
                       const { buffer, mediaType, fileName, size } = media;
-                      const mimetype = mimeTypes.lookup(fileName).toString();
+                      cachedMediaBuffer = buffer;
+                      const mimetype = mimeTypes.lookup(fileName) || 'application/octet-stream';
                       const fullName = posix.join(
                         `${this.instance.id}`,
                         received.key.remoteJid,
@@ -1541,33 +1536,28 @@ export class BaileysStartupService extends ChannelStartupService {
                   this.logger.error(['Error on upload file to S3', error?.message, error?.stack]);
                 }
               }
+
+              // Webhook base64: reuse buffer from S3 download if available
+              if (this.localWebhook.enabled && this.localWebhook.webhookBase64) {
+                try {
+                  if (cachedMediaBuffer) {
+                    messageRaw.message.base64 = cachedMediaBuffer.toString('base64');
+                  } else {
+                    const buffer = await this.downloadMediaWithRetry(
+                      { key: received.key, message: received?.message },
+                    );
+                    messageRaw.message.base64 = buffer ? buffer.toString('base64') : undefined;
+                  }
+                } catch (error) {
+                  this.logger.error(['Error converting media to base64', error?.message]);
+                }
+              }
             }
           }
 
           if (!isNewMessage) {
             continue;
           }
-
-          if (this.localWebhook.enabled) {
-            if (isMedia && this.localWebhook.webhookBase64) {
-              try {
-                const buffer = await downloadMediaMessage(
-                  { key: received.key, message: received?.message },
-                  'buffer',
-                  {},
-                  {
-                    logger: P({ level: 'error' }) as any,
-                    reuploadRequest: this.client.updateMediaMessage,
-                  },
-                );
-
-                messageRaw.message.base64 = buffer ? buffer.toString('base64') : undefined;
-              } catch (error) {
-                this.logger.error(['Error converting media to base64', error?.message]);
-              }
-            }
-          }
-
 
           this.sendDataWebhook(Events.MESSAGES_UPSERT, messageRaw);
 
@@ -2427,15 +2417,7 @@ export class BaileysStartupService extends ChannelStartupService {
 
       const messageRaw = this.prepareMessage(messageSent);
 
-      const isMedia =
-        messageSent?.message?.imageMessage ||
-        messageSent?.message?.videoMessage ||
-        messageSent?.message?.stickerMessage ||
-        messageSent?.message?.ptvMessage ||
-        messageSent?.message?.documentMessage ||
-        messageSent?.message?.documentWithCaptionMessage ||
-        messageSent?.message?.ptvMessage ||
-        messageSent?.message?.audioMessage;
+      const isMedia = !!this.extractMediaFromMessage(messageSent);
 
       if (this.configService.get<Chatwoot>('CHATWOOT').ENABLED && this.localChatwoot?.enabled && !isIntegration) {
         this.chatwootService.eventWhatsapp(
@@ -2464,6 +2446,8 @@ export class BaileysStartupService extends ChannelStartupService {
         }
       }
 
+      let cachedMediaBuffer: Buffer | null = null;
+
       if (this.configService.get<Database>('DATABASE').SAVE_DATA.NEW_MESSAGE) {
         let msg = messageRaw;
         try {
@@ -2485,8 +2469,9 @@ export class BaileysStartupService extends ChannelStartupService {
             );
 
             const { buffer, mediaType, fileName, size } = media;
+            cachedMediaBuffer = buffer;
 
-            const mimetype = mimeTypes.lookup(fileName).toString();
+            const mimetype = mimeTypes.lookup(fileName) || 'application/octet-stream';
 
             const fullName = posix.join(
               `${this.instance.id}`,
@@ -2524,7 +2509,7 @@ export class BaileysStartupService extends ChannelStartupService {
               this.logger.error(['Error on insert media record in database', e?.message, e?.stack]);
             }
           } catch (error) {
-            this.logger.error(['Error on upload file to minio', error?.message, error?.stack]);
+            this.logger.error(['Error on upload file to S3', error?.message, error?.stack]);
           }
         }
       }
@@ -2532,17 +2517,14 @@ export class BaileysStartupService extends ChannelStartupService {
       if (this.localWebhook.enabled) {
         if (isMedia && this.localWebhook.webhookBase64) {
           try {
-            const buffer = await downloadMediaMessage(
-              { key: messageRaw.key, message: messageRaw?.message },
-              'buffer',
-              {},
-              {
-                logger: P({ level: 'error' }) as any,
-                reuploadRequest: this.client.updateMediaMessage,
-              },
-            );
-
-            messageRaw.message.base64 = buffer ? buffer.toString('base64') : undefined;
+            if (cachedMediaBuffer) {
+              messageRaw.message.base64 = cachedMediaBuffer.toString('base64');
+            } else {
+              const buffer = await this.downloadMediaWithRetry(
+                { key: messageRaw.key, message: messageRaw?.message },
+              );
+              messageRaw.message.base64 = buffer ? buffer.toString('base64') : undefined;
+            }
           } catch (error) {
             this.logger.error(['Error converting media to base64', error?.message]);
           }
@@ -3899,13 +3881,32 @@ export class BaileysStartupService extends ChannelStartupService {
     return map[mediaType] || null;
   }
 
-  private hasValidMediaContent(message: any): boolean {
-    if (!message?.message) return false;
+  /**
+   * Unwraps message subtypes (viewOnce, ephemeral, documentWithCaption) and
+   * returns the inner message object if media is present, or null otherwise.
+   */
+  private extractMediaFromMessage(message: any): { innerMessage: any; mediaType: string } | null {
+    if (!message?.message) return null;
 
-    const msg = message.message;
+    let msg = message.message;
 
-    if (Object.keys(msg).length === 1 && Object.prototype.hasOwnProperty.call(msg, 'messageContextInfo')) {
-      return false;
+    // Unwrap subtypes: ephemeral, viewOnce variants, documentWithCaption
+    const subtypeKeys = [
+      'ephemeralMessage',
+      'viewOnceMessage',
+      'viewOnceMessageV2',
+      'viewOnceMessageV2Extension',
+      'documentWithCaptionMessage',
+    ];
+    for (const subtype of subtypeKeys) {
+      if (msg[subtype]?.message) {
+        msg = msg[subtype].message;
+      }
+    }
+
+    // Skip messages that only have messageContextInfo
+    if (Object.keys(msg).length === 1 && msg.messageContextInfo) {
+      return null;
     }
 
     const mediaTypes = [
@@ -3913,12 +3914,96 @@ export class BaileysStartupService extends ChannelStartupService {
       'videoMessage',
       'stickerMessage',
       'documentMessage',
-      'documentWithCaptionMessage',
-      'ptvMessage',
       'audioMessage',
+      'ptvMessage',
     ];
 
-    return mediaTypes.some((type) => msg[type] && Object.keys(msg[type]).length > 0);
+    for (const type of mediaTypes) {
+      if (msg[type] && Object.keys(msg[type]).length > 0) {
+        return { innerMessage: msg, mediaType: type };
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Downloads media with retry + exponential backoff.
+   * First tries Baileys' downloadMediaMessage, then falls back to downloadContentFromMessage.
+   */
+  private async downloadMediaWithRetry(
+    msg: any,
+    maxRetries = 3,
+  ): Promise<Buffer> {
+    let lastError: any;
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        const buffer = await downloadMediaMessage(
+          msg,
+          'buffer',
+          {},
+          {
+            logger: P({ level: 'error' }) as any,
+            reuploadRequest: this.client.updateMediaMessage,
+          },
+        );
+        if (buffer) return buffer;
+      } catch (error) {
+        lastError = error;
+        this.logger.warn(`downloadMediaMessage attempt ${attempt}/${maxRetries} failed: ${error?.message || error}`);
+        if (attempt < maxRetries) {
+          await new Promise((resolve) => setTimeout(resolve, 1000 * Math.pow(2, attempt - 1)));
+        }
+      }
+    }
+
+    // Fallback: downloadContentFromMessage
+    this.logger.warn('All downloadMediaMessage attempts failed, trying downloadContentFromMessage fallback...');
+
+    const message = msg.message || msg;
+    let innerMsg = message;
+
+    // Unwrap subtypes
+    const subtypeKeys = ['ephemeralMessage', 'viewOnceMessage', 'viewOnceMessageV2', 'viewOnceMessageV2Extension', 'documentWithCaptionMessage'];
+    for (const subtype of subtypeKeys) {
+      if (innerMsg[subtype]?.message) {
+        innerMsg = innerMsg[subtype].message;
+      }
+    }
+
+    const detectedType = Object.keys(innerMsg).find((key) => key.endsWith('Message') && key !== 'messageContextInfo');
+    if (!detectedType) throw new Error('Could not determine media type for fallback download');
+
+    const mappedType = this.mapMediaType(detectedType);
+    if (!mappedType) throw new Error(`Unsupported media type for fallback: ${detectedType}`);
+
+    try {
+      const mediaContent = innerMsg[detectedType];
+      const media = await downloadContentFromMessage(
+        {
+          mediaKey: mediaContent?.mediaKey,
+          directPath: mediaContent?.directPath,
+          url: mediaContent?.url || undefined,
+        },
+        mappedType as any,
+        {},
+      );
+      const chunks: Buffer[] = [];
+      for await (const chunk of media) {
+        chunks.push(chunk as Buffer);
+      }
+      const buffer = Buffer.concat(chunks);
+      this.logger.info('downloadContentFromMessage fallback succeeded');
+      return buffer;
+    } catch (fallbackErr) {
+      this.logger.error(`downloadContentFromMessage fallback also failed: ${fallbackErr?.message || fallbackErr}`);
+      throw lastError || fallbackErr;
+    }
+  }
+
+  private hasValidMediaContent(message: any): boolean {
+    return this.extractMediaFromMessage(message) !== null;
   }
 
   public async getBase64FromMediaMessage(data: getBase64FromMediaMessageDto, getBuffer = false) {
@@ -3932,8 +4017,13 @@ export class BaileysStartupService extends ChannelStartupService {
         throw 'Message not found';
       }
 
-      for (const subtype of MessageSubtype) {
-        if (msg.message[subtype]) {
+      // Unwrap all known subtypes including viewOnce variants
+      const allSubtypes = [
+        ...MessageSubtype,
+        'viewOnceMessageV2Extension',
+      ];
+      for (const subtype of allSubtypes) {
+        if (msg.message[subtype]?.message) {
           msg.message = msg.message[subtype].message;
         }
       }
@@ -3958,53 +4048,14 @@ export class BaileysStartupService extends ChannelStartupService {
         throw 'The message is not of the media type';
       }
 
-      if (typeof mediaMessage['mediaKey'] === 'object') {
+      // Ensure mediaKey is Uint8Array (may be plain object after JSON serialization from DB)
+      if (mediaMessage['mediaKey'] && typeof mediaMessage['mediaKey'] === 'object' && !(mediaMessage['mediaKey'] instanceof Uint8Array)) {
         msg.message[mediaType].mediaKey = Uint8Array.from(Object.values(mediaMessage['mediaKey']));
       }
 
       let buffer: Buffer;
 
-      try {
-        buffer = await downloadMediaMessage(
-          msg as WAMessage,
-          'buffer',
-          {},
-          {
-            logger: P({ level: 'error' }) as any,
-            reuploadRequest: this.client.updateMediaMessage,
-          },
-        );
-      } catch {
-        this.logger.error('Download Media failed, trying fallback with downloadContentFromMessage in 5s...');
-        await new Promise((resolve) => setTimeout(resolve, 5000));
-
-        const detectedType = Object.keys(msg.message).find((key) => key.endsWith('Message'));
-        if (!detectedType) throw new Error('Could not determine mediaType for fallback');
-
-        const mappedType = this.mapMediaType(detectedType);
-        if (!mappedType) throw new Error(`Unsupported media type for fallback: ${detectedType}`);
-
-        try {
-          const media = await downloadContentFromMessage(
-            {
-              mediaKey: msg.message?.[detectedType]?.mediaKey,
-              directPath: msg.message?.[detectedType]?.directPath,
-              url: `https://mmg.whatsapp.net${msg?.message?.[detectedType]?.directPath}`,
-            },
-            mappedType as any,
-            {},
-          );
-          const chunks: Buffer[] = [];
-          for await (const chunk of media) {
-            chunks.push(chunk as Buffer);
-          }
-          buffer = Buffer.concat(chunks);
-          this.logger.info('Download Media with downloadContentFromMessage was successful!');
-        } catch (fallbackErr) {
-          this.logger.error('Download Media with downloadContentFromMessage also failed!');
-          throw fallbackErr;
-        }
-      }
+      buffer = await this.downloadMediaWithRetry(msg as WAMessage);
 
       const typeMessage = getContentType(msg.message);
 
