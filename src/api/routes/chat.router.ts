@@ -3,6 +3,7 @@ import {
   ArchiveChatDto,
   BlockUserDto,
   DeleteMessage,
+  FetchMessageHistoryDto,
   getBase64FromMediaMessageDto,
   MarkChatUnreadDto,
   NumberDto,
@@ -24,6 +25,7 @@ import {
   blockUserSchema,
   contactValidateSchema,
   deleteMessageSchema,
+  fetchMessageHistorySchema,
   markChatUnreadSchema,
   messageUpSchema,
   messageValidateSchema,
@@ -84,6 +86,16 @@ export class ChatRouter extends RouterBroker {
         });
 
         return res.status(HttpStatus.CREATED).json(response);
+      })
+      .post(this.routerPath('fetchMessageHistory'), ...guards, async (req, res) => {
+        const response = await this.dataValidate<FetchMessageHistoryDto>({
+          request: req,
+          schema: fetchMessageHistorySchema,
+          ClassRef: FetchMessageHistoryDto,
+          execute: (instance, data) => chatController.fetchMessageHistory(instance, data),
+        });
+
+        return res.status(HttpStatus.OK).json(response);
       })
       .delete(this.routerPath('deleteMessageForEveryone'), ...guards, async (req, res) => {
         const response = await this.dataValidate<DeleteMessage>({

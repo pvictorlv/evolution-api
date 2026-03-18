@@ -59,7 +59,7 @@
     "@sentry/node": "^8.47.0",
     "amqplib": "^0.10.5",
     "axios": "^1.7.9",
-    "baileys": "github:WhiskeySockets/Baileys#8942c3e7a51bf5533e38a1927e1a263bf733ffee",
+    "baileys": "github:WhiskeySockets/Baileys#b3d0632b79f58f55ec44f47a83a09543fbfc837c",
     "class-validator": "^0.14.1",
     "compression": "^1.7.5",
     "cors": "^2.8.5",

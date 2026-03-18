@@ -4,6 +4,7 @@ import {
   ArchiveChatDto,
   BlockUserDto,
   DeleteMessage,
+  FetchMessageHistoryDto,
   getBase64FromMediaMessageDto,
   LastMessage,
   MarkChatUnreadDto,
@@ -3750,6 +3751,26 @@ export class BaileysStartupService extends ChannelStartupService {
     }
 
     return lastMessage as unknown as LastMessage;
+  }
+
+  public async fetchMessageHistory(data: FetchMessageHistoryDto) {
+    try {
+      const count = data.count ?? 50;
+      const lastMessage = await this.getLastMessage(data.remoteJid);
+
+      const requestId = await this.client.fetchMessageHistory(
+        count,
+        lastMessage.key,
+        lastMessage.messageTimestamp,
+      );
+
+      this.logger.info(`Requested on-demand history sync for ${data.remoteJid}, requestId=${requestId}`);
+
+      return { requestId };
+    } catch (error) {
+      this.logger.error(error);
+      throw new InternalServerErrorException('Failed to fetch message history', error.toString());
+    }
   }
 
   public async archiveChat(data: ArchiveChatDto) {

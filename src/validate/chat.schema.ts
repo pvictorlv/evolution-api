@@ -305,6 +305,17 @@ export const profileStatusSchema: JSONSchema7 = {
   ...isNotEmpty('status'),
 };
 
+export const fetchMessageHistorySchema: JSONSchema7 = {
+  $id: v4(),
+  type: 'object',
+  properties: {
+    remoteJid: { type: 'string' },
+    count: { type: 'integer' },
+  },
+  required: ['remoteJid'],
+  ...isNotEmpty('remoteJid'),
+};
+
 export const profileSchema: JSONSchema7 = {
   type: 'object',
   properties: {
