@@ -3773,26 +3773,26 @@ export class BaileysStartupService extends ChannelStartupService {
         anchorKey = messages[0].key;
         anchorTimestamp = messages[0].messageTimestamp;
       } else {
-        // Sem mensagens no banco para esse contato — usar key mínima
-        anchorKey = {
-          remoteJid: data.remoteJid,
-          fromMe: false,
-          id: '',
-        };
-        anchorTimestamp = data.timestamp ?? Math.floor(Date.now() / 1000);
+        throw new NotFoundException(
+          `No messages found for ${data.remoteJid} to use as anchor. ` +
+          `Send at least one message to this contact first, then retry.`,
+        );
       }
+
+      // Baileys proto field is oldestMsgTimestampMs — converter segundos para milissegundos
+      const anchorTimestampMs = anchorTimestamp < 1e12 ? anchorTimestamp * 1000 : anchorTimestamp;
 
       const requestId = await this.client.fetchMessageHistory(
         count,
         anchorKey,
-        anchorTimestamp,
+        anchorTimestampMs,
       );
 
       this.logger.info(
-        `Requested on-demand history sync for ${data.remoteJid}, count=${count}, anchor=${anchorTimestamp}, requestId=${requestId}`,
+        `Requested on-demand history sync for ${data.remoteJid}, count=${count}, anchorId=${anchorKey.id}, anchorTs=${anchorTimestamp}, requestId=${requestId}`,
       );
 
-      return { requestId, anchorTimestamp };
+      return { requestId, anchorKey: anchorKey.id, anchorTimestamp };
     } catch (error) {
       this.logger.error(error);
       throw new InternalServerErrorException('Failed to fetch message history', error.toString());
