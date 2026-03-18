@@ -3756,34 +3756,30 @@ export class BaileysStartupService extends ChannelStartupService {
       let anchorKey: any;
       let anchorTimestamp: number;
 
-      if (data.timestamp) {
-        // Buscar a mensagem mais próxima do timestamp informado (para trás)
-        const messages = await this.prismaRepository.message.findMany({
-          where: {
-            instanceId: this.instance.id,
-            messageTimestamp: { lte: data.timestamp },
-            AND: [{ key: { path: ['remoteJid'], equals: data.remoteJid } }],
-          },
-          orderBy: { messageTimestamp: 'desc' },
-          take: 1,
-        });
+      // Buscar mensagem âncora no banco
+      const messages = await this.prismaRepository.message.findMany({
+        where: {
+          instanceId: this.instance.id,
+          AND: [
+            { key: { path: ['remoteJid'], equals: data.remoteJid } },
+            ...(data.timestamp ? [{ messageTimestamp: { lte: data.timestamp } }] : []),
+          ],
+        },
+        orderBy: { messageTimestamp: 'desc' },
+        take: 1,
+      });
 
-        if (messages.length > 0) {
-          anchorKey = messages[0].key;
-          anchorTimestamp = messages[0].messageTimestamp;
-        } else {
-          // Sem mensagens antes desse timestamp — construir key mínima
-          anchorKey = {
-            remoteJid: data.remoteJid,
-            fromMe: false,
-            id: '',
-          };
-          anchorTimestamp = data.timestamp;
-        }
+      if (messages.length > 0) {
+        anchorKey = messages[0].key;
+        anchorTimestamp = messages[0].messageTimestamp;
       } else {
-        const lastMessage = await this.getLastMessage(data.remoteJid);
-        anchorKey = lastMessage.key;
-        anchorTimestamp = lastMessage.messageTimestamp;
+        // Sem mensagens no banco para esse contato — usar key mínima
+        anchorKey = {
+          remoteJid: data.remoteJid,
+          fromMe: false,
+          id: '',
+        };
+        anchorTimestamp = data.timestamp ?? Math.floor(Date.now() / 1000);
       }
 
       const requestId = await this.client.fetchMessageHistory(
