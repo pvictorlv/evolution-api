@@ -3756,7 +3756,7 @@ export class BaileysStartupService extends ChannelStartupService {
       let anchorKey: any;
       let anchorTimestamp: number;
 
-      // Buscar mensagem âncora no banco
+      // Buscar mensagem âncora no banco da evolution
       const messages = await this.prismaRepository.message.findMany({
         where: {
           instanceId: this.instance.id,
@@ -3772,10 +3772,17 @@ export class BaileysStartupService extends ChannelStartupService {
       if (messages.length > 0) {
         anchorKey = messages[0].key;
         anchorTimestamp = messages[0].messageTimestamp;
+      } else if (data.messageId && data.timestamp) {
+        // Mensagem não existe no banco da evolution mas foi passada pelo chamador (ex: Zapeada)
+        anchorKey = {
+          remoteJid: data.remoteJid,
+          fromMe: data.fromMe ?? false,
+          id: data.messageId,
+        };
+        anchorTimestamp = data.timestamp;
       } else {
         throw new NotFoundException(
-          `No messages found for ${data.remoteJid} to use as anchor. ` +
-          `Send at least one message to this contact first, then retry.`,
+          `No messages found for ${data.remoteJid}. Pass messageId + timestamp to use as anchor.`,
         );
       }
 

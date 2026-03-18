@@ -132,4 +132,6 @@ export class FetchMessageHistoryDto {
   remoteJid: string;
   count?: number;
   timestamp?: number;
+  messageId?: string;
+  fromMe?: boolean;
 }

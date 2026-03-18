@@ -312,6 +312,8 @@ export const fetchMessageHistorySchema: JSONSchema7 = {
     remoteJid: { type: 'string' },
     count: { type: 'integer' },
     timestamp: { type: 'integer' },
+    messageId: { type: 'string' },
+    fromMe: { type: 'boolean' },
   },
   required: ['remoteJid'],
   ...isNotEmpty('remoteJid'),
