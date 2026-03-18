@@ -131,4 +131,5 @@ export class BlockUserDto {
 export class FetchMessageHistoryDto {
   remoteJid: string;
   count?: number;
+  timestamp?: number;
 }

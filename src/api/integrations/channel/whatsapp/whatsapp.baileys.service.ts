@@ -3723,15 +3723,11 @@ export class BaileysStartupService extends ChannelStartupService {
   }
 
   public async getLastMessage(number: string) {
-    const where: any = {
-      key: {
-        remoteJid: number,
-      },
-      instanceId: this.instance.id,
-    };
-
     const messages = await this.prismaRepository.message.findMany({
-      where,
+      where: {
+        instanceId: this.instance.id,
+        AND: [{ key: { path: ['remoteJid'], equals: number } }],
+      },
       orderBy: {
         messageTimestamp: 'desc',
       },
@@ -3756,17 +3752,51 @@ export class BaileysStartupService extends ChannelStartupService {
   public async fetchMessageHistory(data: FetchMessageHistoryDto) {
     try {
       const count = data.count ?? 50;
-      const lastMessage = await this.getLastMessage(data.remoteJid);
+
+      let anchorKey: any;
+      let anchorTimestamp: number;
+
+      if (data.timestamp) {
+        // Buscar a mensagem mais próxima do timestamp informado (para trás)
+        const messages = await this.prismaRepository.message.findMany({
+          where: {
+            instanceId: this.instance.id,
+            messageTimestamp: { lte: data.timestamp },
+            AND: [{ key: { path: ['remoteJid'], equals: data.remoteJid } }],
+          },
+          orderBy: { messageTimestamp: 'desc' },
+          take: 1,
+        });
+
+        if (messages.length > 0) {
+          anchorKey = messages[0].key;
+          anchorTimestamp = messages[0].messageTimestamp;
+        } else {
+          // Sem mensagens antes desse timestamp — construir key mínima
+          anchorKey = {
+            remoteJid: data.remoteJid,
+            fromMe: false,
+            id: '',
+          };
+          anchorTimestamp = data.timestamp;
+        }
+      } else {
+        const lastMessage = await this.getLastMessage(data.remoteJid);
+        anchorKey = lastMessage.key;
+        anchorTimestamp = lastMessage.messageTimestamp;
+      }
 
       const requestId = await this.client.fetchMessageHistory(
         count,
-        lastMessage.key,
-        lastMessage.messageTimestamp,
+        anchorKey,
+        anchorTimestamp,
       );
 
-      this.logger.info(`Requested on-demand history sync for ${data.remoteJid}, requestId=${requestId}`);
+      this.logger.info(
+        `Requested on-demand history sync for ${data.remoteJid}, count=${count}, anchor=${anchorTimestamp}, requestId=${requestId}`,
+      );
 
-      return { requestId };
+      return { requestId, anchorTimestamp };
     } catch (error) {
       this.logger.error(error);
       throw new InternalServerErrorException('Failed to fetch message history', error.toString());
