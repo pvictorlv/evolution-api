@@ -244,6 +244,7 @@ export class BaileysStartupService extends ChannelStartupService {
   private readonly SETTINGS_CACHE_TTL_MS = 30_000; // 30 seconds
 
   private profilePicCache = new Map<string, { url: string | null; timestamp: number }>();
+  private pendingHistorySyncJid: string | null = null;
   private readonly PROFILE_PIC_CACHE_TTL_MS = 300_000; // 5 minutes
 
   public stateConnection: wa.StateConnection = { state: 'close' };
@@ -1221,10 +1222,18 @@ export class BaileysStartupService extends ChannelStartupService {
       syncType?: proto.HistorySync.HistorySyncType;
     }) => {
       try {
+        // Para syncs ON_DEMAND, usar o JID real que foi passado no fetchMessageHistory
+        // para resolver LIDs e salvar o mapeamento
+        const knownJid = syncType === proto.HistorySync.HistorySyncType.ON_DEMAND
+          ? this.pendingHistorySyncJid
+          : null;
+
         if (syncType === proto.HistorySync.HistorySyncType.ON_DEMAND) {
-          console.log('received on-demand history sync, messages=', messages);
+          this.logger.info(`Received on-demand history sync: ${messages.length} msgs, knownJid=${knownJid}`);
+          this.pendingHistorySyncJid = null;
         }
-        console.log(
+
+        this.logger.info(
           `recv ${chats.length} chats, ${contacts.length} contacts, ${messages.length} msgs (is latest: ${isLatest}, progress: ${progress}%), type: ${syncType}`,
         );
 
@@ -1273,6 +1282,10 @@ export class BaileysStartupService extends ChannelStartupService {
           if (m.key.remoteJid?.includes('@lid')) {
             if (m.key.remoteJidAlt) {
               m.key.remoteJid = m.key.remoteJidAlt;
+            } else if (knownJid) {
+              // Salvar mapeamento LID→JID para uso futuro
+              saveOnWhatsappCache([{ remoteJid: knownJid, lid: m.key.remoteJid }]).catch(() => {});
+              m.key.remoteJid = knownJid;
             } else {
               const resolved = await this.resolveLidToJid(m.key.remoteJid);
               if (resolved) m.key.remoteJid = resolved;
@@ -3823,6 +3836,9 @@ export class BaileysStartupService extends ChannelStartupService {
           `No messages found for ${data.remoteJid}. Pass messageId + timestamp to use as anchor.`,
         );
       }
+
+      // Guardar o JID real para resolver LIDs quando o histórico chegar
+      this.pendingHistorySyncJid = data.remoteJid;
 
       // Baileys proto field is oldestMsgTimestampMs — converter segundos para milissegundos
       const anchorTimestampMs = anchorTimestamp < 1e12 ? anchorTimestamp * 1000 : anchorTimestamp;
