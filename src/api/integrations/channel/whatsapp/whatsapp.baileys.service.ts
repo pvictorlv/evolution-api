@@ -1014,6 +1014,24 @@ export class BaileysStartupService extends ChannelStartupService {
     },
   };
 
+  private async resolveLidToJid(lid: string): Promise<string | null> {
+    if (!lid?.includes('@lid')) return null;
+
+    const lidNumber = lid.split('@')[0];
+    try {
+      const cached = await this.prismaRepository.isOnWhatsapp.findFirst({
+        where: { lid: { contains: lidNumber } },
+      });
+      if (cached?.remoteJid) {
+        this.logger.info(`Resolved LID ${lid} → ${cached.remoteJid}`);
+        return cached.remoteJid;
+      }
+    } catch (error) {
+      this.logger.error(`Error resolving LID ${lid}: ${error.message}`);
+    }
+    return null;
+  }
+
   private readonly contactHandle = {
     'chats.phoneNumberShare': async (mapping: { lid: string; jid: string }) => {
       // console.log('LID MAPPING:', mapping);
@@ -1252,8 +1270,13 @@ export class BaileysStartupService extends ChannelStartupService {
             continue;
           }
 
-          if (m.key.remoteJid?.includes('@lid') && m.key.remoteJidAlt) {
-            m.key.remoteJid = m.key.remoteJidAlt;
+          if (m.key.remoteJid?.includes('@lid')) {
+            if (m.key.remoteJidAlt) {
+              m.key.remoteJid = m.key.remoteJidAlt;
+            } else {
+              const resolved = await this.resolveLidToJid(m.key.remoteJid);
+              if (resolved) m.key.remoteJid = resolved;
+            }
           }
 
           if (Long.isLong(m?.messageTimestamp)) {
@@ -1310,23 +1333,33 @@ export class BaileysStartupService extends ChannelStartupService {
       try {
         for (const received of messages) {
           let cacheId = received.key.id;
-          if (received.key.remoteJid?.includes('@lid') && received.key.remoteJidAlt) {
+          if (received.key.remoteJid?.includes('@lid')) {
             (
               received.key as {
                 previousRemoteJid?: string | null;
               }
             ).previousRemoteJid = received.key.remoteJid;
-            received.key.remoteJid = received.key.remoteJidAlt;
+            if (received.key.remoteJidAlt) {
+              received.key.remoteJid = received.key.remoteJidAlt;
+            } else {
+              const resolved = await this.resolveLidToJid(received.key.remoteJid);
+              if (resolved) received.key.remoteJid = resolved;
+            }
           }
 
 
-          if (received.key.participant?.includes('@lid') && received.key.participantAlt) {
+          if (received.key.participant?.includes('@lid')) {
             (
               received.key as {
                 previousParticipant?: string | null;
               }
             ).previousParticipant = received.key.participant;
-            received.key.participant = jidNormalizedUser(received.key.participantAlt);
+            if (received.key.participantAlt) {
+              received.key.participant = jidNormalizedUser(received.key.participantAlt);
+            } else {
+              const resolved = await this.resolveLidToJid(received.key.participant);
+              if (resolved) received.key.participant = resolved;
+            }
           }
 
           if (received.message?.conversation || received.message?.extendedTextMessage?.text) {
@@ -1645,8 +1678,13 @@ export class BaileysStartupService extends ChannelStartupService {
       const readChatToUpdate: Record<string, true> = {}; // {remoteJid: true}
 
       for await (const { key, update } of args) {
-        if (key.remoteJid?.includes('@lid') && key.remoteJidAlt) {
-          key.remoteJid =  jidNormalizedUser(key.remoteJidAlt);
+        if (key.remoteJid?.includes('@lid')) {
+          if (key.remoteJidAlt) {
+            key.remoteJid = jidNormalizedUser(key.remoteJidAlt);
+          } else {
+            const resolved = await this.resolveLidToJid(key.remoteJid);
+            if (resolved) key.remoteJid = resolved;
+          }
         }
 
         const updateKey = `${this.instance.id}_${key.id}_${update.status}`;
