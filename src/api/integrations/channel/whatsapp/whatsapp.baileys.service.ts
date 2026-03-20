@@ -3843,6 +3843,7 @@ export class BaileysStartupService extends ChannelStartupService {
       // Baileys proto field is oldestMsgTimestampMs — converter segundos para milissegundos
       const anchorTimestampMs = anchorTimestamp < 1e12 ? anchorTimestamp * 1000 : anchorTimestamp;
 
+      console.log("Solicitando histórico: " + count);
       const requestId = await this.client.fetchMessageHistory(
         count,
         anchorKey,
