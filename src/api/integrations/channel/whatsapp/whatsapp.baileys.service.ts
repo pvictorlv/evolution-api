@@ -3802,7 +3802,7 @@ export class BaileysStartupService extends ChannelStartupService {
 
   public async fetchMessageHistory(data: FetchMessageHistoryDto) {
     try {
-      const count = data.count ?? 50;
+      const count = data.count ?? 200;
 
       let anchorKey: any;
       let anchorTimestamp: number;
