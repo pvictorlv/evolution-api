@@ -244,7 +244,7 @@ export class BaileysStartupService extends ChannelStartupService {
   private readonly SETTINGS_CACHE_TTL_MS = 30_000; // 30 seconds
 
   private profilePicCache = new Map<string, { url: string | null; timestamp: number }>();
-  private pendingHistorySyncJid: string | null = null;
+  private pendingHistorySyncJids = new Map<string, string>(); // requestId → remoteJid
   private readonly PROFILE_PIC_CACHE_TTL_MS = 300_000; // 5 minutes
 
   public stateConnection: wa.StateConnection = { state: 'close' };
@@ -1213,6 +1213,7 @@ export class BaileysStartupService extends ChannelStartupService {
       isLatest,
       progress,
       syncType,
+      peerDataRequestSessionId,
     }: {
       chats: Chat[];
       contacts: Contact[];
@@ -1220,17 +1221,19 @@ export class BaileysStartupService extends ChannelStartupService {
       isLatest?: boolean;
       progress?: number;
       syncType?: proto.HistorySync.HistorySyncType;
+      peerDataRequestSessionId?: string;
     }) => {
       try {
-        // Para syncs ON_DEMAND, usar o JID real que foi passado no fetchMessageHistory
-        // para resolver LIDs e salvar o mapeamento
-        const knownJid = syncType === proto.HistorySync.HistorySyncType.ON_DEMAND
-          ? this.pendingHistorySyncJid
-          : null;
+        // Para syncs ON_DEMAND, usar o requestId (peerDataRequestSessionId) para buscar
+        // o JID real que foi passado no fetchMessageHistory — suporta requests concorrentes
+        let knownJid: string | null = null;
+        if (syncType === proto.HistorySync.HistorySyncType.ON_DEMAND && peerDataRequestSessionId) {
+          knownJid = this.pendingHistorySyncJids.get(peerDataRequestSessionId) ?? null;
+          this.pendingHistorySyncJids.delete(peerDataRequestSessionId);
+        }
 
         if (syncType === proto.HistorySync.HistorySyncType.ON_DEMAND) {
-          this.logger.info(`Received on-demand history sync: ${messages.length} msgs, knownJid=${knownJid}`);
-          this.pendingHistorySyncJid = null;
+          this.logger.info(`Received on-demand history sync: ${messages.length} msgs, knownJid=${knownJid}, sessionId=${peerDataRequestSessionId}`);
         }
 
         this.logger.info(
@@ -3837,18 +3840,18 @@ export class BaileysStartupService extends ChannelStartupService {
         );
       }
 
-      // Guardar o JID real para resolver LIDs quando o histórico chegar
-      this.pendingHistorySyncJid = data.remoteJid;
-
       // Baileys proto field is oldestMsgTimestampMs — converter segundos para milissegundos
       const anchorTimestampMs = anchorTimestamp < 1e12 ? anchorTimestamp * 1000 : anchorTimestamp;
 
-      console.log("Solicitando histórico: " + count);
       const requestId = await this.client.fetchMessageHistory(
         count,
         anchorKey,
         anchorTimestampMs,
       );
+
+      // Guardar o JID real indexado pelo requestId para resolver LIDs quando o histórico chegar
+      // Suporta múltiplos requests concorrentes (cada um com seu requestId)
+      this.pendingHistorySyncJids.set(requestId, data.remoteJid);
 
       this.logger.info(
         `Requested on-demand history sync for ${data.remoteJid}, count=${count}, anchorId=${anchorKey.id}, anchorTs=${anchorTimestamp}, requestId=${requestId}`,
