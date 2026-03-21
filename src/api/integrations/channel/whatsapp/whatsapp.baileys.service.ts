@@ -2511,7 +2511,8 @@ export class BaileysStartupService extends ChannelStartupService {
 
       const messageRaw = this.prepareMessage(messageSent);
 
-      const isMedia = !!this.extractMediaFromMessage(messageSent);
+      const extractedSentMedia = this.extractMediaFromMessage(messageSent);
+      const isMedia = !!extractedSentMedia;
 
       if (this.configService.get<Chatwoot>('CHATWOOT').ENABLED && this.localChatwoot?.enabled && !isIntegration) {
         this.chatwootService.eventWhatsapp(
