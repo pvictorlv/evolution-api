@@ -22,10 +22,19 @@ export type LogBaileys = 'fatal' | 'error' | 'warn' | 'info' | 'debug' | 'trace'
 
 export type LogLevel = 'ERROR' | 'WARN' | 'DEBUG' | 'INFO' | 'LOG' | 'VERBOSE' | 'DARK' | 'WEBHOOKS' | 'WEBSOCKET';
 
+export type Loki = {
+  ENABLED: boolean;
+  URL: string;
+  PROJECT_ID: string;
+  USERNAME: string;
+  PASSWORD: string;
+};
+
 export type Log = {
   LEVEL: LogLevel[];
   COLOR: boolean;
   BAILEYS: LogBaileys;
+  LOKI: Loki;
 };
 
 export type ProviderSession = {
@@ -454,6 +463,13 @@ export class ConfigService {
           (['ERROR', 'WARN', 'DEBUG', 'INFO', 'LOG', 'VERBOSE', 'DARK', 'WEBHOOKS', 'WEBSOCKET'] as LogLevel[]),
         COLOR: process.env?.LOG_COLOR === 'true',
         BAILEYS: (process.env?.LOG_BAILEYS as LogBaileys) || 'error',
+        LOKI: {
+          ENABLED: process.env?.LOG_LOKI_ENABLED === 'true',
+          URL: process.env?.LOG_LOKI_URL || '',
+          PROJECT_ID: process.env?.LOG_LOKI_PROJECT_ID || 'evolution-api',
+          USERNAME: process.env?.LOG_LOKI_USERNAME || '',
+          PASSWORD: process.env?.LOG_LOKI_PASSWORD || '',
+        },
       },
       DEL_INSTANCE: isBooleanString(process.env?.DEL_INSTANCE)
         ? process.env.DEL_INSTANCE === 'true'

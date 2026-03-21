@@ -1535,77 +1535,91 @@ export class BaileysStartupService extends ChannelStartupService {
             if (isMedia && isNewMessage) {
               let cachedMediaBuffer: Buffer | null = null;
 
+              // For fromMe messages, small delay to allow WhatsApp CDN propagation
+              if (received.key.fromMe) {
+                await new Promise((resolve) => setTimeout(resolve, 1500));
+              }
+
               if (this.configService.get<S3>('S3').ENABLE) {
+                // Step 1: Download media
                 try {
                   const message: any = received;
 
                   if (!extractedMedia) {
-                    this.logger.warn('Message detected as media but contains no valid media content');
+                    this.logger.warn(`[MEDIA] ${received.key.id} detected as media but no valid content`);
                   } else {
                     const media = await this.getBase64FromMediaMessage({ message }, true);
 
                     if (!media) {
-                      this.logger.verbose('No valid media to upload (messageContextInfo only), skipping S3');
+                      this.logger.warn(`[MEDIA] ${received.key.id} messageContextInfo only, skipping`);
                     } else {
                       const { buffer, mediaType, fileName, size } = media;
                       cachedMediaBuffer = buffer;
-                      const mimetype = mimeTypes.lookup(fileName) || 'application/octet-stream';
-                      const fullName = posix.join(
-                        `${this.instance.id}`,
-                        received.key.remoteJid,
-                        mediaType,
-                        v4().replace(/-/g, ''),
-                        fileName,
-                      );
+                      this.logger.info(`[MEDIA] ${received.key.id} downloaded OK (${mediaType}, ${buffer.length} bytes, fromMe=${received.key.fromMe})`);
 
-                      const fileSize = size.fileLength?.low ?? (Buffer.isBuffer(buffer) ? buffer.length : undefined);
-                      await s3Service.uploadFile(fullName, buffer, fileSize, {
-                        'Content-Type': mimetype,
-                      });
+                      // Step 2: Upload to S3
+                      try {
+                        const mimetype = mimeTypes.lookup(fileName) || 'application/octet-stream';
+                        const fullName = posix.join(
+                          `${this.instance.id}`,
+                          received.key.remoteJid,
+                          mediaType,
+                          v4().replace(/-/g, ''),
+                          fileName,
+                        );
 
-                      await this.prismaRepository.media.create({
-                        data: {
-                          messageId: msg.id,
-                          instanceId: this.instanceId,
-                          type: mediaType,
-                          fileName: fullName,
-                          mimetype,
-                        },
-                      });
+                        const fileSize = size.fileLength?.low ?? (Buffer.isBuffer(buffer) ? buffer.length : undefined);
+                        await s3Service.uploadFile(fullName, buffer, fileSize, {
+                          'Content-Type': mimetype,
+                        });
 
-                      const mediaUrl = await s3Service.getObjectUrl(fullName);
-                      messageRaw.message.mediaUrl = mediaUrl;
+                        await this.prismaRepository.media.create({
+                          data: {
+                            messageId: msg.id,
+                            instanceId: this.instanceId,
+                            type: mediaType,
+                            fileName: fullName,
+                            mimetype,
+                          },
+                        });
 
-                      await this.prismaRepository.message.update({
-                        where: { id: msg.id },
-                        data: sanitizeMessageContent(messageRaw),
-                      });
+                        const mediaUrl = await s3Service.getObjectUrl(fullName);
+                        messageRaw.message.mediaUrl = mediaUrl;
+
+                        await this.prismaRepository.message.update({
+                          where: { id: msg.id },
+                          data: sanitizeMessageContent(messageRaw),
+                        });
+                      } catch (s3Error) {
+                        this.logger.error(`[MEDIA] ${received.key.id} S3 UPLOAD FAILED: ${s3Error?.message}`);
+                      }
                     }
                   }
-                } catch (error) {
-                  this.logger.error(['Error on upload file to S3', error?.message, error?.stack]);
+                } catch (downloadError) {
+                  this.logger.error(`[MEDIA] ${received.key.id} DOWNLOAD FAILED (fromMe=${received.key.fromMe}): ${downloadError?.message}`);
                 }
               }
 
-              // Include base64 only when mediaUrl is not a valid public URL
-              // (i.e., S3 upload failed, not configured, or URL is a raw WhatsApp CDN URL like mmg.whatsapp.net)
+              // Include base64 when mediaUrl is not a valid public URL
               const hasValidMediaUrl = messageRaw.message.mediaUrl
                 && typeof messageRaw.message.mediaUrl === 'string'
                 && messageRaw.message.mediaUrl.startsWith('http')
                 && !messageRaw.message.mediaUrl.includes('mmg.whatsapp.net');
 
-              if ( !hasValidMediaUrl) {
+              if (!hasValidMediaUrl) {
                 try {
                   if (cachedMediaBuffer) {
                     messageRaw.message.base64 = cachedMediaBuffer.toString('base64');
                   } else {
+                    this.logger.warn(`[MEDIA] ${received.key.id} no cached buffer, fresh download for base64 fallback`);
                     const buffer = await this.downloadMediaWithRetry(
                       { key: received.key, message: received?.message },
+                      5,
                     );
                     messageRaw.message.base64 = buffer ? buffer.toString('base64') : undefined;
                   }
                 } catch (error) {
-                  this.logger.error(['Error downloading media for webhook base64', error?.message]);
+                  this.logger.error(`[MEDIA] ${received.key.id} BASE64 FALLBACK FAILED: ${error?.message}`);
                 }
               }
             }
@@ -4051,7 +4065,7 @@ export class BaileysStartupService extends ChannelStartupService {
    */
   private async downloadMediaWithRetry(
     msg: any,
-    maxRetries = 3,
+    maxRetries = 5,
   ): Promise<Buffer> {
     let lastError: any;
 
@@ -4063,16 +4077,18 @@ export class BaileysStartupService extends ChannelStartupService {
           {},
           {
             logger: P({ level: 'error' }) as any,
-            reuploadRequest: this.client.updateMediaMessage,
+            reuploadRequest: this.client?.updateMediaMessage,
           },
         );
-        if (buffer) return buffer;
+        if (buffer && buffer.length > 0) return buffer;
+        this.logger.warn(`downloadMediaMessage attempt ${attempt}/${maxRetries} returned empty buffer`);
       } catch (error) {
         lastError = error;
         this.logger.warn(`downloadMediaMessage attempt ${attempt}/${maxRetries} failed: ${error?.message || error}`);
-        if (attempt < maxRetries) {
-          await new Promise((resolve) => setTimeout(resolve, 1000 * Math.pow(2, attempt - 1)));
-        }
+      }
+      if (attempt < maxRetries) {
+        const delayMs = Math.min(2000 * Math.pow(2, attempt - 1), 30000);
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
       }
     }
 
