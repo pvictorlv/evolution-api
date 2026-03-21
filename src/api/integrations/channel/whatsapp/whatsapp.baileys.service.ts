@@ -2622,14 +2622,32 @@ export class BaileysStartupService extends ChannelStartupService {
         try {
           if (cachedMediaBuffer) {
             messageRaw.message.base64 = cachedMediaBuffer.toString('base64');
-          } else {
-            const buffer = await this.downloadMediaWithRetry(
-              { key: messageRaw.key, message: messageRaw?.message },
-            );
-            messageRaw.message.base64 = buffer ? buffer.toString('base64') : undefined;
+          } else if (extractedSentMedia) {
+            // Use downloadContentFromMessage directly with extracted media data
+            const mediaContent = extractedSentMedia.innerMessage[extractedSentMedia.mediaType];
+            const mappedType = this.mapMediaType(extractedSentMedia.mediaType);
+            if (mediaContent && mappedType) {
+              const media = await downloadContentFromMessage(
+                {
+                  mediaKey: mediaContent.mediaKey,
+                  directPath: mediaContent.directPath,
+                  url: mediaContent.url || undefined,
+                },
+                mappedType as any,
+                {},
+              );
+              const chunks: Buffer[] = [];
+              for await (const chunk of media) {
+                chunks.push(chunk as Buffer);
+              }
+              const buffer = Buffer.concat(chunks);
+              if (buffer && buffer.length > 0) {
+                messageRaw.message.base64 = buffer.toString('base64');
+              }
+            }
           }
         } catch (error) {
-          this.logger.error(['Error downloading media for webhook base64', error?.message]);
+          this.logger.error(`[MEDIA] sent msg BASE64 FALLBACK FAILED: ${error?.message}`);
         }
       }
 
