@@ -4085,6 +4085,8 @@ export class BaileysStartupService extends ChannelStartupService {
       } catch (error) {
         lastError = error;
         this.logger.warn(`downloadMediaMessage attempt ${attempt}/${maxRetries} failed: ${error?.message || error}`);
+        this.logger.error(error);
+
       }
       if (attempt < maxRetries) {
         const delayMs = Math.min(2000 * Math.pow(2, attempt - 1), 30000);
