@@ -1611,12 +1611,31 @@ export class BaileysStartupService extends ChannelStartupService {
                   if (cachedMediaBuffer) {
                     messageRaw.message.base64 = cachedMediaBuffer.toString('base64');
                   } else {
-                    this.logger.warn(`[MEDIA] ${received.key.id} no cached buffer, fresh download for base64 fallback`);
-                    const buffer = await this.downloadMediaWithRetry(
-                      { key: received.key, message: received?.message },
-                      5,
-                    );
-                    messageRaw.message.base64 = buffer ? buffer.toString('base64') : undefined;
+                    this.logger.warn(`[MEDIA] ${received.key.id} no cached buffer, direct downloadContentFromMessage fallback`);
+                    // Use downloadContentFromMessage directly with extracted media data
+                    // instead of downloadMediaMessage which can fail with wrong content type
+                    const mediaContent = extractedMedia.innerMessage[extractedMedia.mediaType];
+                    const mappedType = this.mapMediaType(extractedMedia.mediaType);
+                    if (mediaContent && mappedType) {
+                      const media = await downloadContentFromMessage(
+                        {
+                          mediaKey: mediaContent.mediaKey,
+                          directPath: mediaContent.directPath,
+                          url: mediaContent.url || undefined,
+                        },
+                        mappedType as any,
+                        {},
+                      );
+                      const chunks: Buffer[] = [];
+                      for await (const chunk of media) {
+                        chunks.push(chunk as Buffer);
+                      }
+                      const buffer = Buffer.concat(chunks);
+                      if (buffer && buffer.length > 0) {
+                        messageRaw.message.base64 = buffer.toString('base64');
+                        this.logger.info(`[MEDIA] ${received.key.id} direct downloadContentFromMessage succeeded (${buffer.length} bytes)`);
+                      }
+                    }
                   }
                 } catch (error) {
                   this.logger.error(`[MEDIA] ${received.key.id} BASE64 FALLBACK FAILED: ${error?.message}`);
