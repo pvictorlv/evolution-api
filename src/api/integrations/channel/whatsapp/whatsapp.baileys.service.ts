@@ -93,6 +93,7 @@ import makeWASocket, {
   AnyMessageContent, Browsers,
   BufferedEventData,
   BufferJSON,
+  CacheStore,
   Chat,
   ConnectionState,
   Contact,
@@ -229,6 +230,7 @@ export class BaileysStartupService extends ChannelStartupService {
   }
 
   private authStateProvider: AuthStateProvider;
+  private readonly mediaCache: CacheStore = new NodeCache();
   // private readonly msgRetryCounterCache: CacheStore = new NodeCache();
   // private readonly userDevicesCache: CacheStore = new NodeCache();
   private endSession = false;
@@ -837,7 +839,7 @@ export class BaileysStartupService extends ChannelStartupService {
         creds: this.instance.authState.state.creds,
         keys: makeCacheableSignalKeyStore(this.instance.authState.state.keys, P({ level: this.logBaileys }) as any),
       },
-      // msgRetryCounterCache: this.msgRetryCounterCache,
+      mediaCache: this.mediaCache,
       generateHighQualityLinkPreview: true,
       getMessage: async (key) => (await this.getMessage(key)) as Promise<proto.IMessage>,
       browser: Browsers.macOS("Safari"),
