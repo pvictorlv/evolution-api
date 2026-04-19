@@ -14,6 +14,8 @@ import { Logger } from '@config/logger.config';
 import { NotFoundException } from '@exceptions';
 import { Contact, Message, Prisma } from '@prisma/client';
 import { createJid } from '@utils/createJid';
+import { GlobalProxyPool } from '@utils/globalProxyPool';
+import { makeProxyAgent, ProxyConfig } from '@utils/makeProxyAgent';
 import { WASocket } from 'baileys';
 import { isArray } from 'class-validator';
 import EventEmitter2 from 'eventemitter2';
@@ -35,6 +37,10 @@ export class ChannelStartupService {
   public readonly instance: wa.Instance = {};
   public readonly localChatwoot: wa.LocalChatwoot = {};
   public readonly localProxy: wa.LocalProxy = {};
+  private usingGlobalPool = false;
+  private activeGlobalProxy: ProxyConfig | null = null;
+  private cachedProxyAgent: ReturnType<typeof makeProxyAgent> | null = null;
+  private cachedProxyAgentKey: string | null = null;
   public readonly localSettings: wa.LocalSettings = {};
   public readonly localWebhook: wa.LocalWebHook = {};
 
@@ -363,6 +369,22 @@ export class ChannelStartupService {
 
   public async loadProxy() {
     this.localProxy.enabled = false;
+    this.usingGlobalPool = false;
+    this.activeGlobalProxy = null;
+
+    const data = await this.prismaRepository.proxy.findUnique({
+      where: { instanceId: this.instanceId },
+    });
+
+    if (data?.enabled) {
+      this.localProxy.enabled = true;
+      this.localProxy.host = data.host;
+      this.localProxy.port = data.port;
+      this.localProxy.protocol = data.protocol;
+      this.localProxy.username = data.username;
+      this.localProxy.password = data.password;
+      return;
+    }
 
     if (process.env.PROXY_HOST) {
       this.localProxy.enabled = true;
@@ -371,22 +393,73 @@ export class ChannelStartupService {
       this.localProxy.protocol = process.env.PROXY_PROTOCOL || 'http';
       this.localProxy.username = process.env.PROXY_USERNAME;
       this.localProxy.password = process.env.PROXY_PASSWORD;
+      return;
     }
 
-    const data = await this.prismaRepository.proxy.findUnique({
-      where: {
-        instanceId: this.instanceId,
-      },
+    if (GlobalProxyPool.isConfigured()) {
+      if (!GlobalProxyPool.isEnabled()) {
+        const msg = `Proxy pool is configured (${process.env.PROXY_POOL_FILE}) but no proxies are available. Refusing to connect without proxy.`;
+        this.logger.error(`[${this.instanceName}] ${msg}`);
+        throw new Error(msg);
+      }
+      if (!this.pickFromGlobalPool()) {
+        throw new Error(`Failed to pick a proxy from the global pool for instance ${this.instanceName}`);
+      }
+    }
+  }
+
+  public markActiveProxyFailed(reason?: string): boolean {
+    if (!this.usingGlobalPool) return false;
+    GlobalProxyPool.markFailed(this.activeGlobalProxy, reason);
+    this.logger.warn(
+      `[${this.instanceName}] Marked proxy ${this.activeGlobalProxy?.host}:${this.activeGlobalProxy?.port} failed (${reason || 'unknown'})`,
+    );
+    return true;
+  }
+
+  private pickFromGlobalPool(): boolean {
+    const picked = GlobalProxyPool.next();
+    if (!picked) {
+      this.localProxy.enabled = false;
+      this.usingGlobalPool = false;
+      this.activeGlobalProxy = null;
+      return false;
+    }
+    this.localProxy.enabled = true;
+    this.localProxy.host = picked.host;
+    this.localProxy.port = String(picked.port);
+    this.localProxy.protocol = picked.protocol || 'http';
+    this.localProxy.username = picked.username;
+    this.localProxy.password = picked.password;
+    this.activeGlobalProxy = picked;
+    this.usingGlobalPool = true;
+    this.logger.info(`[${this.instanceName}] Global pool proxy selected: ${picked.host}:${picked.port}`);
+    return true;
+  }
+
+  public isUsingGlobalProxyPool(): boolean {
+    return this.usingGlobalPool;
+  }
+
+  public getProxyAgent() {
+    if (!this.localProxy?.enabled || !this.localProxy?.host) {
+      this.cachedProxyAgent = null;
+      this.cachedProxyAgentKey = null;
+      return null;
+    }
+    const key = `${this.localProxy.protocol || 'http'}://${this.localProxy.username || ''}@${this.localProxy.host}:${this.localProxy.port}`;
+    if (this.cachedProxyAgent && this.cachedProxyAgentKey === key) {
+      return this.cachedProxyAgent;
+    }
+    this.cachedProxyAgent = makeProxyAgent({
+      host: this.localProxy.host,
+      port: this.localProxy.port,
+      protocol: this.localProxy.protocol,
+      username: this.localProxy.username,
+      password: this.localProxy.password,
     });
-
-    if (data?.enabled) {
-      this.localProxy.enabled = true;
-      this.localProxy.host = data?.host;
-      this.localProxy.port = data?.port;
-      this.localProxy.protocol = data?.protocol;
-      this.localProxy.username = data?.username;
-      this.localProxy.password = data?.password;
-    }
+    this.cachedProxyAgentKey = key;
+    return this.cachedProxyAgent;
   }
 
   public async setProxy(data: ProxyDto) {

@@ -81,7 +81,6 @@ import { Boom } from '@hapi/boom';
 import { createId as cuid } from '@paralleldrive/cuid2';
 import { Instance } from '@prisma/client';
 import { createJid } from '@utils/createJid';
-import { makeProxyAgent } from '@utils/makeProxyAgent';
 import { getOnWhatsappCache, saveOnWhatsappCache } from '@utils/onWhatsappCache';
 import { status } from '@utils/renderStatus';
 import useMultiFileAuthStatePrisma from '@utils/use-multi-file-auth-state-prisma';
@@ -575,9 +574,19 @@ export class BaileysStartupService extends ChannelStartupService {
           return;
         }
 
+        if (this.isUsingGlobalProxyPool()) {
+          this.markActiveProxyFailed(`connection close status ${statusCode}`);
+        }
+
         this.cleanupClient();
         await delay(backoffMs);
-        await this.connectToWhatsapp(this.phoneNumber);
+        try {
+          await this.connectToWhatsapp(this.phoneNumber);
+        } catch (err) {
+          this.logger.error(
+            `Reconnect failed for ${this.instanceName} (attempt ${this.reconnectAttempts}): ${err?.toString()}`,
+          );
+        }
       } else {
         this.sendDataWebhook(Events.STATUS_INSTANCE, {
           instance: this.instance.name,
@@ -793,41 +802,11 @@ export class BaileysStartupService extends ChannelStartupService {
 
     let options;
 
-    if (this.localProxy?.enabled) {
-      this.logger.info('Proxy enabled: ' + this.localProxy?.host);
-
-      if (this.localProxy?.host?.includes('proxyscrape')) {
-        try {
-          const response = await axios.get(this.localProxy?.host);
-          const text = response.data;
-          const proxyUrls = text.split('\r\n');
-          const rand = Math.floor(Math.random() * Math.floor(proxyUrls.length));
-          const proxyUrl = 'http://' + proxyUrls[rand];
-          options = {
-            agent: makeProxyAgent(proxyUrl),
-            fetchAgent: makeProxyAgent(proxyUrl),
-          };
-        } catch (error) {
-          this.localProxy.enabled = false;
-        }
-      } else {
-        options = {
-          agent: makeProxyAgent({
-            host: this.localProxy.host,
-            port: this.localProxy.port,
-            protocol: this.localProxy.protocol,
-            username: this.localProxy.username,
-            password: this.localProxy.password,
-          }),
-          fetchAgent: makeProxyAgent({
-            host: this.localProxy.host,
-            port: this.localProxy.port,
-            protocol: this.localProxy.protocol,
-            username: this.localProxy.username,
-            password: this.localProxy.password,
-          }),
-        };
-      }
+    const proxyAgent = this.getProxyAgent();
+    if (proxyAgent) {
+      const source = this.isUsingGlobalProxyPool() ? 'global pool' : 'instance';
+      this.logger.info(`Proxy enabled (${source}): ${this.localProxy?.host}:${this.localProxy?.port}`);
+      options = { agent: proxyAgent, fetchAgent: proxyAgent };
     }
 
     const socketConfig: UserFacingSocketConfig = {
@@ -924,7 +903,7 @@ export class BaileysStartupService extends ChannelStartupService {
       this.loadChatwoot();
       this.loadSettings();
       this.loadWebhook();
-      this.loadProxy();
+      await this.loadProxy();
 
       return await this.createClient(number);
     } catch (error) {
@@ -2926,17 +2905,9 @@ export class BaileysStartupService extends ChannelStartupService {
             responseType: 'arraybuffer',
           };
 
-          if (this.localProxy?.enabled) {
-            config = {
-              ...config,
-              httpsAgent: makeProxyAgent({
-                host: this.localProxy.host,
-                port: this.localProxy.port,
-                protocol: this.localProxy.protocol,
-                username: this.localProxy.username,
-                password: this.localProxy.password,
-              }),
-            };
+          const proxyAgentHere = this.getProxyAgent();
+          if (proxyAgentHere) {
+            config = { ...config, httpsAgent: proxyAgentHere };
           }
 
           const response = await axios.get(mediaMessage.media, config);
@@ -3016,17 +2987,9 @@ export class BaileysStartupService extends ChannelStartupService {
           responseType: 'arraybuffer',
         };
 
-        if (this.localProxy?.enabled) {
-          config = {
-            ...config,
-            httpsAgent: makeProxyAgent({
-              host: this.localProxy.host,
-              port: this.localProxy.port,
-              protocol: this.localProxy.protocol,
-              username: this.localProxy.username,
-              password: this.localProxy.password,
-            }),
-          };
+        const proxyAgentHere = this.getProxyAgent();
+        if (proxyAgentHere) {
+          config = { ...config, httpsAgent: proxyAgentHere };
         }
 
         const response = await axios.get(url, config);
@@ -4384,17 +4347,9 @@ export class BaileysStartupService extends ChannelStartupService {
           responseType: 'arraybuffer',
         };
 
-        if (this.localProxy?.enabled) {
-          config = {
-            ...config,
-            httpsAgent: makeProxyAgent({
-              host: this.localProxy.host,
-              port: this.localProxy.port,
-              protocol: this.localProxy.protocol,
-              username: this.localProxy.username,
-              password: this.localProxy.password,
-            }),
-          };
+        const proxyAgentHere = this.getProxyAgent();
+        if (proxyAgentHere) {
+          config = { ...config, httpsAgent: proxyAgentHere };
         }
 
         pic = (await axios.get(url, config)).data;
@@ -4628,17 +4583,9 @@ export class BaileysStartupService extends ChannelStartupService {
           responseType: 'arraybuffer',
         };
 
-        if (this.localProxy?.enabled) {
-          config = {
-            ...config,
-            httpsAgent: makeProxyAgent({
-              host: this.localProxy.host,
-              port: this.localProxy.port,
-              protocol: this.localProxy.protocol,
-              username: this.localProxy.username,
-              password: this.localProxy.password,
-            }),
-          };
+        const proxyAgentHere = this.getProxyAgent();
+        if (proxyAgentHere) {
+          config = { ...config, httpsAgent: proxyAgentHere };
         }
 
         pic = (await axios.get(url, config)).data;
