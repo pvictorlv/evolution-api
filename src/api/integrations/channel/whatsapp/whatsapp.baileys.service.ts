@@ -639,6 +639,14 @@ export class BaileysStartupService extends ChannelStartupService {
       this.clearConnectingTimeout();
       this.reconnectAttempts = 0;
       this.instance.wuid = this.client.user.id.replace(/:\d+/, '');
+      if (this.localProxy?.enabled && this.localProxy?.host) {
+        const source = this.isUsingGlobalProxyPool() ? 'global pool' : 'instance';
+        this.logger.info(
+          `[${this.instanceName}] WhatsApp WebSocket OPEN via proxy (${source}): ${this.localProxy.host}:${this.localProxy.port}`,
+        );
+      } else {
+        this.logger.warn(`[${this.instanceName}] WhatsApp WebSocket OPEN WITHOUT proxy`);
+      }
       try {
         const profilePic = await this.profilePicture(this.instance.wuid);
         this.instance.profilePictureUrl = profilePic.profilePictureUrl;
@@ -805,8 +813,14 @@ export class BaileysStartupService extends ChannelStartupService {
     const proxyAgent = this.getProxyAgent();
     if (proxyAgent) {
       const source = this.isUsingGlobalProxyPool() ? 'global pool' : 'instance';
-      this.logger.info(`Proxy enabled (${source}): ${this.localProxy?.host}:${this.localProxy?.port}`);
+      this.logger.info(
+        `[${this.instanceName}] Baileys socket will use proxy (${source}): ${this.localProxy?.protocol || 'http'}://${this.localProxy?.host}:${this.localProxy?.port}`,
+      );
       options = { agent: proxyAgent, fetchAgent: proxyAgent };
+    } else {
+      this.logger.warn(
+        `[${this.instanceName}] Baileys socket connecting WITHOUT proxy — real server IP will be exposed to WhatsApp`,
+      );
     }
 
     const socketConfig: UserFacingSocketConfig = {

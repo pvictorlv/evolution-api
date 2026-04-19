@@ -462,6 +462,18 @@ export class ChannelStartupService {
     return this.cachedProxyAgent;
   }
 
+  public getProxyAgentForAxios(purpose: string) {
+    const agent = this.getProxyAgent();
+    if (agent) {
+      this.logger.verbose(
+        `[${this.instanceName}] axios ${purpose} via proxy ${this.localProxy?.host}:${this.localProxy?.port}`,
+      );
+    } else {
+      this.logger.verbose(`[${this.instanceName}] axios ${purpose} WITHOUT proxy`);
+    }
+    return agent;
+  }
+
   public async setProxy(data: ProxyDto) {
     await this.prismaRepository.proxy.upsert({
       where: {

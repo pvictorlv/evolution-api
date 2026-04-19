@@ -49,5 +49,6 @@ lerna-debug.log*
 
 # Proxy pool (contains credentials)
 /proxies.json
+/proxies.*.json
 /proxies.txt
 /scripts/vps_install_key.py
