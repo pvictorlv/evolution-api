@@ -238,7 +238,7 @@ export class BaileysStartupService extends ChannelStartupService {
   private connectingTimeout: ReturnType<typeof setTimeout> | null = null;
   private reconnectAttempts = 0;
   private readonly MAX_RECONNECT_ATTEMPTS = 10;
-  private readonly CONNECTING_TIMEOUT_MS = 120_000; // 2 minutes
+  private readonly CONNECTING_TIMEOUT_MS = 60_000; // 1 minute
 
   private cachedSettings: any = null;
   private cachedSettingsTimestamp = 0;
@@ -345,31 +345,41 @@ export class BaileysStartupService extends ChannelStartupService {
   private startConnectingTimeout() {
     this.clearConnectingTimeout();
     this.connectingTimeout = setTimeout(async () => {
-      if (this.stateConnection.state === 'connecting') {
-        this.reconnectAttempts++;
+      if (this.stateConnection.state === 'open') return;
 
-        if (this.reconnectAttempts > this.MAX_RECONNECT_ATTEMPTS) {
-          this.logger.error(
-            `Instance ${this.instanceName} stuck in "connecting" and exceeded max reconnect attempts (${this.MAX_RECONNECT_ATTEMPTS}). Stopping.`,
-          );
-          this.sendDataWebhook(Events.CONNECTION_UPDATE, {
-            instance: this.instance.name,
-            state: 'close',
-            statusReason: DisconnectReason.connectionLost,
-          });
-          this.cleanupClient();
-          return;
-        }
+      this.reconnectAttempts++;
 
-        this.logger.warn(
-          `Instance ${this.instanceName} stuck in "connecting" for ${this.CONNECTING_TIMEOUT_MS / 1000}s, forcing reconnection (attempt ${this.reconnectAttempts}/${this.MAX_RECONNECT_ATTEMPTS})`,
+      if (this.reconnectAttempts > this.MAX_RECONNECT_ATTEMPTS) {
+        this.logger.error(
+          `Instance ${this.instanceName} stuck (state=${this.stateConnection.state ?? 'undefined'}) and exceeded max reconnect attempts (${this.MAX_RECONNECT_ATTEMPTS}). Stopping.`,
         );
+        this.sendDataWebhook(Events.CONNECTION_UPDATE, {
+          instance: this.instance.name,
+          state: 'close',
+          statusReason: DisconnectReason.connectionLost,
+        });
         this.cleanupClient();
-        try {
-          await this.connectToWhatsapp(this.phoneNumber);
-        } catch (error) {
-          this.logger.error('Failed to reconnect after connecting timeout: ' + error);
-        }
+        return;
+      }
+
+      this.logger.warn(
+        `Instance ${this.instanceName} stuck (state=${this.stateConnection.state ?? 'undefined'}) for ${this.CONNECTING_TIMEOUT_MS / 1000}s, forcing reconnection (attempt ${this.reconnectAttempts}/${this.MAX_RECONNECT_ATTEMPTS})`,
+      );
+
+      if (this.isUsingGlobalProxyPool()) {
+        this.markActiveProxyFailed(`watchdog: stuck in state=${this.stateConnection.state ?? 'undefined'}`);
+      }
+
+      this.cleanupClient();
+      try {
+        await this.connectToWhatsapp(this.phoneNumber);
+      } catch (error) {
+        this.logger.error(`Failed to reconnect after watchdog: ${error?.toString()}. Retrying in 10s.`);
+        setTimeout(() => {
+          this.connectToWhatsapp(this.phoneNumber).catch((e) =>
+            this.logger.error(`Scheduled retry also failed: ${e?.toString()}`),
+          );
+        }, 10_000);
       }
     }, this.CONNECTING_TIMEOUT_MS);
   }
@@ -584,8 +594,13 @@ export class BaileysStartupService extends ChannelStartupService {
           await this.connectToWhatsapp(this.phoneNumber);
         } catch (err) {
           this.logger.error(
-            `Reconnect failed for ${this.instanceName} (attempt ${this.reconnectAttempts}): ${err?.toString()}`,
+            `Reconnect failed for ${this.instanceName} (attempt ${this.reconnectAttempts}): ${err?.toString()}. Scheduling retry in 15s.`,
           );
+          setTimeout(() => {
+            this.connectToWhatsapp(this.phoneNumber).catch((e) =>
+              this.logger.error(`[${this.instanceName}] scheduled retry failed: ${e?.toString()}`),
+            );
+          }, 15_000);
         }
       } else {
         this.sendDataWebhook(Events.STATUS_INSTANCE, {
@@ -841,8 +856,8 @@ export class BaileysStartupService extends ChannelStartupService {
       maxMsgRetryCount: 5,
       fireInitQueries: false,
       defaultQueryTimeoutMs: 60000,
-      connectTimeoutMs: 60000,
-      keepAliveIntervalMs: 60_000,
+      connectTimeoutMs: 25000,
+      keepAliveIntervalMs: 30_000,
       // qrTimeout: 45_000,
       emitOwnEvents: true,
       shouldIgnoreJid: (jid) => {
@@ -888,6 +903,8 @@ export class BaileysStartupService extends ChannelStartupService {
     this.client = makeWASocket(socketConfig);
 
     this.eventHandler();
+
+    this.startConnectingTimeout();
 
     this.client.ws.on('CB:call', (packet) => {
       console.log('CB:call', packet);
@@ -2919,7 +2936,7 @@ export class BaileysStartupService extends ChannelStartupService {
             responseType: 'arraybuffer',
           };
 
-          const proxyAgentHere = this.getProxyAgent();
+          const proxyAgentHere = this.getProxyAgentForAxios('mimetype probe');
           if (proxyAgentHere) {
             config = { ...config, httpsAgent: proxyAgentHere };
           }
@@ -3001,7 +3018,7 @@ export class BaileysStartupService extends ChannelStartupService {
           responseType: 'arraybuffer',
         };
 
-        const proxyAgentHere = this.getProxyAgent();
+        const proxyAgentHere = this.getProxyAgentForAxios('sticker webp fetch');
         if (proxyAgentHere) {
           config = { ...config, httpsAgent: proxyAgentHere };
         }
@@ -4361,7 +4378,7 @@ export class BaileysStartupService extends ChannelStartupService {
           responseType: 'arraybuffer',
         };
 
-        const proxyAgentHere = this.getProxyAgent();
+        const proxyAgentHere = this.getProxyAgentForAxios('profile picture fetch');
         if (proxyAgentHere) {
           config = { ...config, httpsAgent: proxyAgentHere };
         }
@@ -4597,7 +4614,7 @@ export class BaileysStartupService extends ChannelStartupService {
           responseType: 'arraybuffer',
         };
 
-        const proxyAgentHere = this.getProxyAgent();
+        const proxyAgentHere = this.getProxyAgentForAxios('group picture fetch');
         if (proxyAgentHere) {
           config = { ...config, httpsAgent: proxyAgentHere };
         }
