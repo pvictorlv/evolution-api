@@ -342,6 +342,45 @@ export class BaileysStartupService extends ChannelStartupService {
     }
   }
 
+  private isProxySuspectedFailure(statusCode: number | undefined, error: any): boolean {
+    // WhatsApp/session-level codes: NOT proxy fault, do not burn proxy reputation
+    const sessionLevelCodes = new Set<number>([
+      DisconnectReason.loggedOut, // 401
+      DisconnectReason.forbidden, // 403
+      DisconnectReason.badSession, // 500
+      DisconnectReason.multideviceMismatch, // 411
+      DisconnectReason.connectionClosed, // 428 — WA actively closed the WS
+      DisconnectReason.connectionReplaced, // 440
+      DisconnectReason.unavailableService, // 503
+      DisconnectReason.restartRequired, // 515
+      405,
+      415,
+    ]);
+    if (statusCode && sessionLevelCodes.has(statusCode)) return false;
+
+    // Network-level errors (TCP/TLS): proxy is the suspect
+    const errCode = error?.code || error?.cause?.code;
+    const networkErrors = new Set([
+      'ECONNRESET',
+      'ECONNREFUSED',
+      'ETIMEDOUT',
+      'EHOSTUNREACH',
+      'ENETUNREACH',
+      'EPIPE',
+      'ECONNABORTED',
+    ]);
+    if (errCode && networkErrors.has(errCode)) return true;
+
+    // 408 = timeout — typically proxy hang
+    if (statusCode === DisconnectReason.timedOut) return true;
+
+    // No statusCode means raw socket error before HTTP/WS layer — suspect proxy
+    if (!statusCode) return true;
+
+    // Anything else (unknown code) — don't punish proxy by default
+    return false;
+  }
+
   private startConnectingTimeout() {
     this.clearConnectingTimeout();
     this.connectingTimeout = setTimeout(async () => {
@@ -584,7 +623,7 @@ export class BaileysStartupService extends ChannelStartupService {
           return;
         }
 
-        if (this.isUsingGlobalProxyPool()) {
+        if (this.isUsingGlobalProxyPool() && this.isProxySuspectedFailure(statusCode, lastDisconnect?.error)) {
           this.markActiveProxyFailed(`connection close status ${statusCode}`);
         }
 
