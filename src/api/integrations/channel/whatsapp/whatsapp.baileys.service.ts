@@ -1354,11 +1354,22 @@ export class BaileysStartupService extends ChannelStartupService {
           messagesRaw.push(this.prepareMessage(m));
         }
 
+        const isOnDemandSync = syncType === proto.HistorySync.HistorySyncType.ON_DEMAND;
+
         const CHUNK_SIZE = 100;
         for (let i = 0; i < messagesRaw.length; i += CHUNK_SIZE) {
           const chunk = messagesRaw.slice(i, i + CHUNK_SIZE);
 
-          this.sendDataWebhook(Events.MESSAGES_SET, chunk);
+          // Um sync ON_DEMAND é a resposta a um /chat/fetchMessageHistory: o
+          // consumidor pediu o histórico de UMA conversa agora. Sem essa marca
+          // ele chega indistinguível do import em massa do pareamento e acaba
+          // descartado pelos recortes daquele (janela de datas, flag de
+          // importação) — justamente o histórico antigo que foi pedido.
+          // A marca vai só na cópia do webhook: o insert usa o chunk original,
+          // que precisa bater com as colunas do Prisma.
+          const webhookChunk = isOnDemandSync ? chunk.map((m) => ({ ...m, isOnDemand: true })) : chunk;
+
+          this.sendDataWebhook(Events.MESSAGES_SET, webhookChunk);
 
           if (this.configService.get<Database>('DATABASE').SAVE_DATA.HISTORIC) {
             try {
