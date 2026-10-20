@@ -60,7 +60,7 @@
     "amqplib": "^0.10.5",
     "audio-decode": "^2.2.3",
     "axios": "^1.7.9",
-    "baileys": "github:WhiskeySockets/Baileys#ca61ac14d8f62b8dfdabf14ac3d62786b462faba",
+    "baileys": "github:WhiskeySockets/Baileys#0af2386292907f7d9742d8d41f830d8c48208fa1",
     "class-validator": "^0.14.1",
     "compression": "^1.7.5",
     "cors": "^2.8.5",
