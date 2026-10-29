@@ -898,7 +898,9 @@ export class BaileysStartupService extends ChannelStartupService {
       connectTimeoutMs: 25000,
       keepAliveIntervalMs: 30_000,
       // qrTimeout: 45_000,
-      emitOwnEvents: true,
+      // false: o que a API envia não volta como messages.upsert, então um fromMe
+      // no webhook só pode ter saído de outro aparelho (o celular do dono).
+      emitOwnEvents: session.EMIT_OWN_EVENTS,
       shouldIgnoreJid: (jid) => {
         const isBroadcast = isJidBroadcast(jid);
         const isNewsletter = isJidNewsletter(jid);
