@@ -1071,6 +1071,13 @@ export class BaileysStartupService extends ChannelStartupService {
   private async resolveLidToJid(lid: string): Promise<string | null> {
     if (!lid?.includes('@lid')) return null;
 
+    try {
+      const pn = await this.client?.signalRepository?.lidMapping?.getPNForLID(lid);
+      if (pn) return jidNormalizedUser(pn);
+    } catch (error) {
+      this.logger.error(`Error resolving LID ${lid} from session: ${error.message}`);
+    }
+
     const lidNumber = lid.split('@')[0];
     try {
       const cached = await this.prismaRepository.isOnWhatsapp.findFirst({
@@ -1336,6 +1343,7 @@ export class BaileysStartupService extends ChannelStartupService {
           }
 
           if (m.key.remoteJid?.includes('@lid')) {
+            m.key = { ...(m.key.toJSON?.() ?? m.key), previousRemoteJid: m.key.remoteJid };
             if (m.key.remoteJidAlt) {
               m.key.remoteJid = m.key.remoteJidAlt;
             } else if (knownJid) {
