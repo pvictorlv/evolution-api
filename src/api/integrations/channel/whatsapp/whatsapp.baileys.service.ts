@@ -146,6 +146,7 @@ import sharp from 'sharp';
 import { PassThrough, Readable } from 'stream';
 import { v4 } from 'uuid';
 
+import { OfflineDrainSocket, watchOfflineDrain } from './offlineBatchDrain';
 import { useVoiceCallsBaileys } from './voiceCalls/useVoiceCallsBaileys';
 import IWebMessageInfo = proto.IWebMessageInfo;
 import {jidNormalizedUser} from "baileys/lib/WABinary/jid-utils.js";
@@ -942,6 +943,16 @@ export class BaileysStartupService extends ChannelStartupService {
     this.endSession = false;
 
     this.client = makeWASocket(socketConfig);
+
+    watchOfflineDrain(this.client as unknown as OfflineDrainSocket, {
+      onRequest: (attempt) =>
+        this.logger.warn(`[${this.instance.name}] offline delivery stalled, asking for batch ${attempt + 1}`),
+      onDrained: (attempts) => {
+        if (attempts > 0) this.logger.warn(`[${this.instance.name}] offline delivery finished after ${attempts} extra batches`);
+      },
+      onGiveUp: (attempts) =>
+        this.logger.error(`[${this.instance.name}] offline delivery still stalled after ${attempts} extra batches`),
+    });
 
     this.eventHandler();
 
