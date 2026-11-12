@@ -234,6 +234,7 @@ export class BaileysStartupService extends ChannelStartupService {
   // private readonly msgRetryCounterCache: CacheStore = new NodeCache();
   // private readonly userDevicesCache: CacheStore = new NodeCache();
   private endSession = false;
+  private offlineDrain: { stop: () => void } | null = null;
   private logBaileys = this.configService.get<Log>('LOG').BAILEYS;
 
   private connectingTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -262,6 +263,8 @@ export class BaileysStartupService extends ChannelStartupService {
 
     this.endSession = true;
     this.clearConnectingTimeout();
+    this.offlineDrain?.stop();
+    this.offlineDrain = null;
 
     try {
       this.client.ev.removeAllListeners('connection.update');
@@ -944,7 +947,12 @@ export class BaileysStartupService extends ChannelStartupService {
 
     this.client = makeWASocket(socketConfig);
 
-    watchOfflineDrain(this.client as unknown as OfflineDrainSocket, {
+    this.offlineDrain?.stop();
+    this.offlineDrain = watchOfflineDrain(this.client as unknown as OfflineDrainSocket, {
+      onPreview: (preview) =>
+        this.logger.warn(
+          `[${this.instance.name}] offline preview: count=${preview.count} message=${preview.message} receipt=${preview.receipt} notification=${preview.notification}`,
+        ),
       onRequest: (attempt) =>
         this.logger.warn(`[${this.instance.name}] offline delivery stalled, asking for batch ${attempt + 1}`),
       onDrained: (attempts) => {
@@ -952,6 +960,8 @@ export class BaileysStartupService extends ChannelStartupService {
       },
       onGiveUp: (attempts) =>
         this.logger.error(`[${this.instance.name}] offline delivery still stalled after ${attempts} extra batches`),
+      onRequestFailed: (error) =>
+        this.logger.warn(`[${this.instance.name}] offline batch request failed: ${error}`),
     });
 
     this.eventHandler();
