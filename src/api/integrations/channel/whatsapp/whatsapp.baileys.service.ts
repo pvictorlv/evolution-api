@@ -146,6 +146,7 @@ import sharp from 'sharp';
 import { PassThrough, Readable } from 'stream';
 import { v4 } from 'uuid';
 
+import { editedCaptionContent } from './editedContent';
 import { OfflineDrainSocket, watchOfflineDrain } from './offlineBatchDrain';
 import { useVoiceCallsBaileys } from './voiceCalls/useVoiceCallsBaileys';
 import IWebMessageInfo = proto.IWebMessageInfo;
@@ -4513,52 +4514,44 @@ export class BaileysStartupService extends ChannelStartupService {
     }
   }
 
-  private async formatUpdateMessage(data: UpdateMessageDto) {
-    try {
-      const msg: any = await this.getMessage(data.key, true);
-
-      if (msg?.messageType === 'conversation' || msg?.messageType === 'extendedTextMessage') {
-        return {
-          text: data.text,
-        };
-      }
-
-      if (msg?.messageType === 'imageMessage') {
-        return {
-          image: msg?.message?.imageMessage,
-          caption: data.text,
-        };
-      }
-
-      if (msg?.messageType === 'videoMessage') {
-        return {
-          video: msg?.message?.videoMessage,
-          caption: data.text,
-        };
-      }
-
-      return null;
-    } catch (error) {
-      this.logger.error(error);
-      throw new BadRequestException(error.toString());
-    }
-  }
-
   public async updateMessage(data: UpdateMessageDto) {
     const jid = createJid(data.number);
 
-    const options = await this.formatUpdateMessage(data);
+    const stored: any = await this.getMessage(data.key, true);
+    const isText = stored?.messageType === 'conversation' || stored?.messageType === 'extendedTextMessage';
+    const editedMessage = editedCaptionContent(stored?.messageType, data.text);
 
-    if (!options) {
+    if (!isText && !editedMessage) {
       this.logger.error('Message not compatible');
       throw new BadRequestException('Message not compatible');
     }
 
     try {
-      return await this.client.sendMessage(jid, {
-        ...(options as any),
-        edit: data.key,
+      if (isText) {
+        return await this.client.sendMessage(jid, { text: data.text, edit: data.key });
+      }
+
+      // sendMessage can't edit a caption alone: it would download the encrypted
+      // file and upload it again as new media.
+      const edit = generateWAMessageFromContent(
+        jid,
+        {
+          protocolMessage: {
+            key: data.key,
+            type: proto.Message.ProtocolMessage.Type.MESSAGE_EDIT,
+            editedMessage,
+            timestampMs: Date.now(),
+          },
+        },
+        { userJid: this.instance.wuid },
+      );
+
+      await this.client.relayMessage(jid, edit.message, {
+        messageId: edit.key.id,
+        additionalAttributes: { edit: '1' },
       });
+
+      return edit;
     } catch (error) {
       this.logger.error(error);
       throw new BadRequestException(error.toString());
